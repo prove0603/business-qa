@@ -1,0 +1,35 @@
+# Maven
+target/
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment / Secrets
+application-dev.yml
+.env
+.env.local
+
+# Node
+business-qa-ui/node_modules/
+business-qa-ui/dist/
+
+# Build output in resources/static (frontend build)
+business-qa-server/src/main/resources/static/
+
+# Git repos cloned by the app
+.business-qa/

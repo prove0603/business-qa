@@ -1,0 +1,16 @@
+# Copy this file to application-dev.yml and fill in actual values
+# application-dev.yml is excluded from Git
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/business_qa
+    username: postgres
+    password: your_postgres_password
+  ai:
+    openai:
+      api-key: sk-your-dashscope-api-key
+
+qa:
+  git:
+    username: your-git-username
+    password: your-git-password-or-token
