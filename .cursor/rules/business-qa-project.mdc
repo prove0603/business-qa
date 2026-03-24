@@ -1,5 +1,5 @@
 ---
-description: Business QA project conventions and architecture guide
+description: Business QA 项目规范与架构指南
 globs:
   - "**/*.java"
   - "**/*.vue"
@@ -7,83 +7,103 @@ globs:
 alwaysApply: true
 ---
 
-# Business QA Project Rules
+# Business QA 项目规则
 
-## Project Overview
-RAG-powered intelligent Q&A assistant for business systems. Uses Spring AI ChatClient for all AI interactions.
+## 项目概述
+基于 RAG 的业务智能问答助手。所有 AI 交互统一使用 Spring AI ChatClient。
 
-## Tech Stack
-- **Backend**: Java 21, Spring Boot 3.4.x, Spring AI 1.0.0, MyBatis-Plus 3.5.7, PostgreSQL + pgvector
-- **Frontend**: Vue 3, TypeScript, Element Plus, Vite 6
-- **AI**: Spring AI ChatClient (OpenAI-compatible endpoint pointing to DashScope), DashScope SDK for Embedding only
+## 技术栈
+- **后端**：Java 21, Spring Boot 3.4.x, Spring AI 1.0.0, MyBatis-Plus 3.5.7, PostgreSQL + pgvector
+- **前端**：Vue 3, TypeScript, Element Plus, Vite 6
+- **AI**：Spring AI ChatClient（OpenAI 兼容接口指向 DashScope），DashScope SDK 仅用于 Embedding
 
-## Package Structure
-- `com.zhuangjie.qa` — root package
-- `com.zhuangjie.qa.config` — Spring configurations (incl. S3Config, StorageConfig)
+## 包结构
+- `com.zhuangjie.qa` — 根包
+- `com.zhuangjie.qa.config` — Spring 配置（含 S3Config, StorageConfig）
 - `com.zhuangjie.qa.common` — Result, PageResult
-- `com.zhuangjie.qa.controller` — REST controllers (prefix: /api/)
-- `com.zhuangjie.qa.chat` — Chat/conversation services
-- `com.zhuangjie.qa.doc` — Document management services
-- `com.zhuangjie.qa.file` — File infrastructure (S3 storage, Tika parsing, content type detection, text cleaning)
-- `com.zhuangjie.qa.change` — Git change detection + AI suggestion
-- `com.zhuangjie.qa.rag` — RAG infrastructure (Embedding, VectorStore)
-- `com.zhuangjie.qa.db.entity` — MyBatis-Plus entities
-- `com.zhuangjie.qa.db.mapper` — MyBatis-Plus mappers
-- `com.zhuangjie.qa.db.service` — MyBatis-Plus service layer
-- `com.zhuangjie.qa.pojo.req` — Request records
-- `com.zhuangjie.qa.pojo.vo` — View objects
+- `com.zhuangjie.qa.controller` — REST 控制器（前缀 /api/）
+- `com.zhuangjie.qa.chat` — 对话引擎
+- `com.zhuangjie.qa.doc` — 文档管理
+- `com.zhuangjie.qa.file` — 文件基础设施（S3 存储、Tika 解析、内容类型检测、文本清洗）
+- `com.zhuangjie.qa.change` — Git 变更检测 + AI 建议
+- `com.zhuangjie.qa.rag` — RAG 基础设施（Embedding, VectorStore）
+- `com.zhuangjie.qa.db.entity` — MyBatis-Plus 实体
+- `com.zhuangjie.qa.db.mapper` — MyBatis-Plus Mapper
+- `com.zhuangjie.qa.db.service` — MyBatis-Plus Service 层
+- `com.zhuangjie.qa.pojo.req` — 请求对象（Java record）
+- `com.zhuangjie.qa.pojo.vo` — 视图对象
 
-## Coding Conventions
-- Use Java 21 features: record, sealed interface, pattern matching, text blocks
-- Constructor injection via `@RequiredArgsConstructor`
-- Request/Response objects use Java records
-- All REST endpoints return `Result<T>` wrapper
-- Paginated queries return `PageResult<T>`
-- No company-internal information in code or comments (this project is open-source)
-- GroupId: `com.zhuangjie`, never use `com.al.risk`
+## 编码规范
+- 使用 Java 21 特性：record, sealed interface, pattern matching, text blocks
+- 构造器注入：`@RequiredArgsConstructor`
+- 请求/响应对象使用 Java record
+- 所有 REST 接口统一返回 `Result<T>`
+- 分页查询返回 `PageResult<T>`
+- 代码和注释中禁止出现公司内部信息（本项目开源）
+- GroupId: `com.zhuangjie`，禁止使用 `com.al.risk`
+- JSON 序列化统一使用 Jackson（Spring Boot 自带），不要用 Hutool JSONUtil 序列化 record（5.8.x 不支持）
 
-## AI Usage
-- All LLM calls go through Spring AI `ChatClient` (stream for chat, call for analysis)
-- Embedding uses DashScope SDK adapter `DashScopeEmbeddingModel` (text-embedding-v3, 1024 dimensions)
-- Never import spring-ai-alibaba; DashScope uses OpenAI-compatible interface
-- Vector store: PgVectorStore with HNSW index, cosine distance, 1024 dimensions, table `qa_vector`
-- `spring.ai.openai.base-url` must NOT contain `/v1` suffix (Spring AI auto-appends it)
-- ChatMemory conversation ID via `ChatMemory.CONVERSATION_ID` constant (not hardcoded string)
-- Chat memory: `MessageWindowChatMemory` (InMemoryChatMemory was removed in Spring AI 1.0.0)
+## AI 调用规范
+- 所有 LLM 调用通过 Spring AI `ChatClient`（流式用 stream，同步用 call）
+- Embedding 使用 DashScope SDK 适配器 `DashScopeEmbeddingModel`（text-embedding-v3, 1024 维）
+- 禁止引入 spring-ai-alibaba；DashScope 使用 OpenAI 兼容接口
+- 向量库：PgVectorStore，HNSW 索引，余弦距离，1024 维，表名 `qa_vector`
+- `spring.ai.openai.base-url` 不能包含 `/v1` 后缀（Spring AI 会自动追加）
+- 对话记忆 ID 通过 `ChatMemory.CONVERSATION_ID` 常量传入（不要硬编码字符串）
+- 对话记忆实现：`MessageWindowChatMemory`（InMemoryChatMemory 在 Spring AI 1.0.0 中已移除）
 
-## Vectorization Pipeline
-- `@EnableAsync` on `QaApplication` enables async vectorization
-- Upload/create/update → `VectorSyncService.asyncVectorize()` (runs in async thread pool)
-- `ChunkSplitter`: splits by Markdown headings, then by paragraph, max 1000 chars per chunk, min 50 chars
-- `VectorService.vectorizeDocument()`: delete old vectors → split into chunks → embed → store in PgVectorStore
-- `VectorStore.delete(Filter.Expression)` for filter-based deletion (not `delete(String)`)
-- `VectorService.search()` uses `FilterExpressionBuilder.in("module_id", ...)` for module-scoped retrieval
-- 0 chunk edge case: if chunk count is 0, `vectorized` stays false
+## 向量化流程
+- `QaApplication` 上的 `@EnableAsync` 启用异步向量化
+- 上传/创建/更新 → `VectorSyncService.asyncVectorize()`（异步线程池执行）
+- `ChunkSplitter`：按 Markdown 标题分块，再按段落拆分，最大 1000 字符，最小 50 字符
+- `VectorService.vectorizeDocument()`：删旧向量 → 分块 → Embedding → 存入 PgVectorStore
+- 删除向量使用字符串过滤语法 `"document_id == " + id`（通过 `delete(String)`）
+- `VectorService.search()` 使用 `FilterExpressionBuilder.in("module_id", ...)` 做模块范围过滤
+- 分块数为 0 时，`vectorized` 保持 false
 
-## Frontend Conventions
-- Composition API with `<script setup lang="ts">`
-- API layer in `src/api/index.ts` — axios with response interceptor unwrapping `Result.data`
-- SSE streaming via `fetch` + `ReadableStream` (not EventSource)
-- Time formatting via `utils/format.ts`
-- Vite proxy: `/api -> http://localhost:8091`
-- Element Plus locale: `zh-CN`, all UI text in Chinese
+## 前端规范
+- Composition API + `<script setup lang="ts">`
+- API 层在 `src/api/index.ts`，axios 响应拦截器解包 `Result.data`
+- SSE 流式通过 `fetch` + `ReadableStream`（不用 EventSource）
+- 时间格式化统一使用 `utils/format.ts`
+- Vite 代理：`/api -> http://localhost:8091`
+- Element Plus 语言：`zh-CN`，所有界面文本使用中文
 
-## File Storage
-- MinIO (S3-compatible) for document file storage
-- AWS SDK v2 S3Client with path-style access (`forcePathStyle=true`)
-- Apache Tika for document parsing (PDF, Word, TXT, Markdown)
-- Upload flow: validate → Tika detect type → Tika parse text → upload to MinIO → save metadata + parsed content to DB → async vectorize
-- Config prefix: `qa.storage.*` (endpoint, access-key, secret-key, bucket, region)
-- Bucket: `business-qa`, auto-created on startup
+## 文件存储
+- MinIO（S3 兼容）存储文档文件
+- AWS SDK v2 S3Client，路径风格访问（`forcePathStyle=true`）
+- Apache Tika 解析文档（PDF, Word, TXT, Markdown）
+- 上传流程：校验 → Tika 检测类型 → Tika 提取文本 → 上传 MinIO → 元数据+解析内容存库 → 异步向量化
+- 配置前缀：`qa.storage.*`（endpoint, access-key, secret-key, bucket, region）
+- Bucket: `business-qa`，启动时自动创建
 
-## Database
-- PostgreSQL with pgvector extension
-- Database name: `business_qa`
-- Tables prefixed with `t_`
-- Vector table: `qa_vector` (auto-created by PgVectorStore, HNSW index, 1024 dimensions)
+## 数据库
+- PostgreSQL + pgvector 扩展
+- 数据库名：`business_qa`
+- 表名前缀 `t_`
+- 向量表：`qa_vector`（PgVectorStore 自动创建，HNSW 索引，1024 维）
 
-## Configuration Notes
-- `application.yml` base-url: `https://dashscope.aliyuncs.com/compatible-mode` (no trailing `/v1`)
-- `application-dev.yml` contains actual API key & GitLab PAT — gitignored
-- `.vscode/launch.json` has `AI_DASHSCOPE_API_KEY` env var for IDE launch
-- MinIO startup scripts in `scripts/` directory (ps1 + bat)
+## 配置注意事项
+- `application.yml` 的 base-url：`https://dashscope.aliyuncs.com/compatible-mode`（不加 `/v1`）
+- `application-dev.yml` 包含实际 API Key 和 GitLab PAT，已被 gitignore 排除
+- `.vscode/launch.json` 通过 `AI_DASHSCOPE_API_KEY` 环境变量注入密钥
+- MinIO 启动脚本在 `scripts/` 目录（ps1 + bat）
+
+## 功能完成状态与规划
+
+### 已完成
+- 模块管理 CRUD（COMMON/TASK 类型）
+- 文档管理（在线编辑 + 文件上传 + MinIO 存储 + Tika 解析）
+- 文档分块 + 异步向量化
+- RAG 智能问答（模块过滤 + SSE 流式 + 多轮对话记忆 + 引用来源）
+- 仪表盘（四项统计指标）
+- Git 变更检测 + AI 建议生成
+- 变更建议查看/忽略
+
+### 待实现
+- **应用建议自动修改文档**：点击"应用"后将建议内容写入文档正文，触发重新向量化
+- **文档版本历史**：记录修改快照，支持回滚
+- **Markdown 富文本编辑器**
+- **仪表盘增强**：趋势图、模块统计、问答热度
+- **向量化失败重试机制**
+- **用户认证与多用户隔离**
