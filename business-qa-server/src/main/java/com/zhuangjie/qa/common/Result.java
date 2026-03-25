@@ -2,6 +2,11 @@ package com.zhuangjie.qa.common;
 
 import lombok.Data;
 
+/**
+ * 统一 REST 响应包装类。
+ * 所有 API 接口返回 Result<T> 格式：{ code, message, data }。
+ * 前端 axios 拦截器会解包 data 字段。
+ */
 @Data
 public class Result<T> {
 

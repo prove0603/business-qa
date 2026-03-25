@@ -9,6 +9,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 模块管理 REST 接口。
+ *
+ * 模块是文档和问答的组织单元，分为两种类型：
+ * - COMMON: 全局模块，其文档在所有问答中都会被检索（如公司规范、通用FAQ）
+ * - TASK: 业务模块，需要用户手动选择才纳入检索范围
+ *
+ * 每个模块可关联 Git 仓库，用于代码变更检测功能。
+ */
 @RestController
 @RequestMapping("/api/module")
 @RequiredArgsConstructor
@@ -16,6 +25,7 @@ public class ModuleController {
 
     private final ModuleDbService moduleDbService;
 
+    /** 获取所有有效模块（status=1） */
     @GetMapping("/list")
     public Result<List<QaModule>> list() {
         return Result.ok(moduleDbService.listActive());
@@ -55,6 +65,7 @@ public class ModuleController {
         return Result.ok(module);
     }
 
+    /** 逻辑删除（status 置 0） */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         moduleDbService.lambdaUpdate().eq(QaModule::getId, id).set(QaModule::getStatus, 0).update();

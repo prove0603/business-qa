@@ -15,6 +15,15 @@ import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 
 import java.net.URI;
 
+/**
+ * MinIO（S3 兼容）客户端配置。
+ *
+ * 使用 AWS SDK v2 的 S3Client 对接 MinIO。
+ * forcePathStyle(true) 是关键配置：MinIO 使用路径风格（endpoint/bucket/key），
+ * 而非 AWS 默认的虚拟主机风格（bucket.endpoint/key）。
+ *
+ * 应用启动时自动检查并创建 bucket（ensureBucketExists）。
+ */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
@@ -22,6 +31,10 @@ public class S3Config {
 
     private final StorageConfig storageConfig;
 
+    /**
+     * S3Client Bean，配置 MinIO 连接信息。
+     * endpoint、accessKey 等从 StorageConfig（qa.storage.* 配置项）读取。
+     */
     @Bean
     public S3Client s3Client() {
         AwsBasicCredentials credentials = AwsBasicCredentials.create(
@@ -37,6 +50,11 @@ public class S3Config {
                 .build();
     }
 
+    /**
+     * 应用启动时自动确保 bucket 存在。
+     * 先 headBucket 检查是否存在，不存在则 createBucket。
+     * 连接 MinIO 失败只打 warn 日志不阻止启动（允许本地开发时不启动 MinIO）。
+     */
     @Bean
     public CommandLineRunner ensureBucketExists(S3Client s3Client) {
         return args -> {

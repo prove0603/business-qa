@@ -8,6 +8,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 仪表盘 REST 接口。
+ * 提供首页统计概览数据：模块数、文档数、对话数、待处理建议数。
+ */
 @RestController
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
