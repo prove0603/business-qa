@@ -26,23 +26,38 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Git 仓库同步服务，使用 JGit（纯 Java Git 实现）操作 Git 仓库。
+ *
+ * 不依赖本地安装的 git 命令，通过 JGit API 完成：
+ * - 克隆（clone）/ 拉取（pull）远程仓库
+ * - 获取 HEAD commit hash
+ * - 对比两个 commit 之间的文件差异
+ * - 输出 diff 内容（用于发给 AI 分析）
+ *
+ * 仓库克隆到本地目录：~/.business-qa/repos/{moduleCode}/
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class GitSyncService {
 
+    /** 仓库本地克隆的根目录 */
     @Value("${qa.git.clone-base-dir:${user.home}/.business-qa/repos}")
     private String cloneBaseDir;
 
+    /** Git 认证用户名（私有仓库需要，如 GitLab PAT） */
     @Value("${qa.git.username:}")
     private String gitUsername;
 
+    /** Git 认证密码/令牌 */
     @Value("${qa.git.password:}")
     private String gitPassword;
 
     /**
-     * Syncs the repository: clone if not exists, pull if exists.
-     * Returns the local repo path.
+     * 同步远程仓库到本地。
+     * 已存在 .git 目录则执行 pull，否则执行 clone。
+     * @return 本地仓库路径
      */
     public Path syncRepo(QaModule module) throws IOException, GitAPIException {
         Path cloneDir = getCloneDir(module);
@@ -55,9 +70,7 @@ public class GitSyncService {
         }
     }
 
-    /**
-     * Resolves HEAD commit hash.
-     */
+    /** 获取仓库 HEAD 指向的 commit hash（40 位十六进制字符串） */
     public String resolveHead(Path repoRoot) {
         try (Repository repo = openRepository(repoRoot)) {
             ObjectId head = repo.resolve("HEAD");
@@ -69,7 +82,13 @@ public class GitSyncService {
     }
 
     /**
-     * Detects changed files between two commits.
+     * 检测两个 commit 之间的文件变更。
+     *
+     * 使用 JGit 的 DiffFormatter 对比两个 commit 的 tree，
+     * 将变更分为 added / modified / deleted 三类。
+     * rename 处理为 delete + add。
+     *
+     * @return DeltaResult 包含三类变更文件列表
      */
     public DeltaResult detectChanges(Path repoRoot, String fromCommit, String toCommit) {
         try (Repository repo = openRepository(repoRoot);
@@ -85,6 +104,7 @@ public class GitSyncService {
             RevCommit from = revWalk.parseCommit(fromId);
             RevCommit to = revWalk.parseCommit(toId);
 
+            // DisabledOutputStream：不输出 diff 内容，只分析变更类型
             try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
                 formatter.setRepository(repo);
                 formatter.setDetectRenames(true);
@@ -115,7 +135,9 @@ public class GitSyncService {
     }
 
     /**
-     * Gets the diff content for a specific file between two commits.
+     * 获取两个 commit 之间的完整 diff 文本内容。
+     * 输出格式与 `git diff` 命令一致，包含文件路径、行号、增删标记。
+     * 这个 diff 文本会被发送给 AI 分析。
      */
     public String getFileDiff(Path repoRoot, String fromCommit, String toCommit) {
         try (Repository repo = openRepository(repoRoot);
@@ -127,6 +149,7 @@ public class GitSyncService {
             RevCommit from = revWalk.parseCommit(fromId);
             RevCommit to = revWalk.parseCommit(toId);
 
+            // ByteArrayOutputStream：将 diff 输出到内存
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             try (DiffFormatter formatter = new DiffFormatter(out)) {
                 formatter.setRepository(repo);
@@ -139,11 +162,13 @@ public class GitSyncService {
         }
     }
 
+    /** 根据模块编码生成本地克隆目录路径（特殊字符替换为下划线） */
     public Path getCloneDir(QaModule module) {
         String dirName = module.getModuleCode().replaceAll("[^a-zA-Z0-9_-]", "_");
         return Path.of(cloneBaseDir, dirName);
     }
 
+    /** 克隆远程仓库到本地 */
     private Path cloneRepo(String remoteUrl, Path targetDir, String branch, QaModule module)
             throws IOException, GitAPIException {
         Files.createDirectories(targetDir.getParent());
@@ -163,6 +188,7 @@ public class GitSyncService {
         return targetDir;
     }
 
+    /** 拉取远程仓库最新代码 */
     private Path pullRepo(Path repoDir, String branch, QaModule module) throws IOException, GitAPIException {
         log.info("Pulling latest for module: {} (branch: {})", module.getModuleName(), branch);
         try (Git git = Git.open(repoDir.toFile())) {
@@ -178,6 +204,7 @@ public class GitSyncService {
         return repoDir;
     }
 
+    /** 构建 Git 认证凭证（用于私有仓库） */
     private CredentialsProvider getCredentials() {
         if (gitUsername != null && !gitUsername.isBlank() && gitPassword != null && !gitPassword.isBlank()) {
             return new UsernamePasswordCredentialsProvider(gitUsername, gitPassword);
@@ -185,6 +212,7 @@ public class GitSyncService {
         return null;
     }
 
+    /** 打开本地 Git 仓库 */
     private Repository openRepository(Path repoRoot) throws IOException {
         return new FileRepositoryBuilder()
                 .setGitDir(repoRoot.resolve(".git").toFile())
@@ -192,10 +220,12 @@ public class GitSyncService {
                 .build();
     }
 
+    /** 变更检测结果，包含新增/修改/删除的文件列表 */
     public record DeltaResult(
             String fromCommit, String toCommit,
             List<String> addedFiles, List<String> modifiedFiles, List<String> deletedFiles
     ) {
+        /** 返回所有变更文件（不含已删除的） */
         public List<String> allChangedFiles() {
             List<String> all = new ArrayList<>();
             all.addAll(addedFiles);
@@ -203,6 +233,7 @@ public class GitSyncService {
             return all;
         }
 
+        /** 返回变更文件总数 */
         public int totalCount() {
             return addedFiles.size() + modifiedFiles.size() + deletedFiles.size();
         }

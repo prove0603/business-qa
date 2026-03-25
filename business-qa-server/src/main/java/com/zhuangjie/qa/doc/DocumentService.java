@@ -17,6 +17,21 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 文档管理服务，编排文档的完整生命周期。
+ *
+ * 支持两种创建方式：
+ * 1. 在线编辑创建 —— 用户直接输入 Markdown 内容
+ * 2. 文件上传创建 —— 上传 PDF/Word/TXT 等文件，自动解析提取文本
+ *
+ * 文档创建/更新后会自动触发异步向量化（VectorSyncService），
+ * 使文档内容可被 RAG 问答检索到。
+ *
+ * 数据流：
+ * 创建/上传 → 校验 → 解析文本 → 存 MinIO（文件上传时） → 存 PostgreSQL → 异步向量化
+ * 更新 → 通过 contentHash 判断内容是否变更 → 变更则重新向量化
+ * 删除 → 删 MinIO 文件 → 删向量 → 逻辑删除（status=0）
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,7 +45,9 @@ public class DocumentService {
     private final ContentTypeDetectionService contentTypeDetectionService;
 
     /**
-     * 在线编辑创建（直接传入文本内容）
+     * 在线编辑创建文档。
+     * 用户在前端 Markdown 编辑器中直接编写内容，无文件上传。
+     * 创建后立即触发异步向量化。
      */
     public QaDocument create(DocumentCreateReq req) {
         QaDocument doc = new QaDocument();
@@ -38,6 +55,7 @@ public class DocumentService {
         doc.setTitle(req.title());
         doc.setContent(req.content());
         doc.setFileType(req.fileType() != null ? req.fileType() : "MARKDOWN");
+        // 内容哈希用于后续更新时判断内容是否真的发生了变化
         doc.setContentHash(DigestUtil.sha256Hex(req.content()));
         doc.setFileSize(0L);
         doc.setChunkCount(0);
@@ -46,6 +64,7 @@ public class DocumentService {
         doc.setStatus(1);
         documentDbService.save(doc);
 
+        // 向量化失败不影响文档创建，只打 warn 日志
         try {
             vectorSyncService.asyncVectorize(doc.getId());
         } catch (Exception e) {
@@ -55,18 +74,30 @@ public class DocumentService {
     }
 
     /**
-     * 文件上传创建（支持 PDF/Word/TXT/Markdown 等）
+     * 文件上传创建文档。
+     *
+     * 完整流程：
+     * 1. ContentTypeDetectionService.validateFile() — 校验文件类型和大小
+     * 2. ContentTypeDetectionService.detectContentType() — 用 Tika 检测真实 MIME 类型
+     * 3. DocumentParseService.parseContent() — 用 Tika 提取文本内容
+     * 4. FileStorageService.uploadDocument() — 原件存入 MinIO
+     * 5. 保存文档元数据 + 解析后的文本到 PostgreSQL
+     * 6. VectorSyncService.asyncVectorize() — 异步触发向量化
      */
     public QaDocument uploadFile(Long moduleId, String title, MultipartFile file) {
+        // 校验文件类型（扩展名 + MIME 类型双重检查）和大小（不超过 50MB）
         contentTypeDetectionService.validateFile(file);
 
+        // Tika 检测真实文件类型（不信任客户端传的 Content-Type）
         String detectedType = contentTypeDetectionService.detectContentType(file);
+        // Tika 提取文本内容 + TextCleaningService 清洗噪声
         String parsedContent = documentParseService.parseContent(file);
 
         if (parsedContent.isBlank()) {
             throw new RuntimeException("文件解析后无有效文本内容");
         }
 
+        // 原件存入 MinIO，返回存储路径（如 documents/2024/01/15/abc123.pdf）
         String fileKey = fileStorageService.uploadDocument(file);
 
         String fileType = resolveFileType(file.getOriginalFilename(), detectedType);
@@ -96,12 +127,18 @@ public class DocumentService {
         return doc;
     }
 
+    /**
+     * 更新文档内容。
+     * 通过 SHA-256 哈希判断内容是否真正变更，仅在变更时触发重新向量化。
+     * 每次内容变更 version 自增。
+     */
     public QaDocument update(Long id, DocumentUpdateReq req) {
         QaDocument doc = documentDbService.getById(id);
         if (doc == null) {
             throw new RuntimeException("Document not found: " + id);
         }
 
+        // 用 SHA-256 对比新旧内容哈希，避免无意义的重新向量化
         String newHash = DigestUtil.sha256Hex(req.content());
         boolean contentChanged = !newHash.equals(doc.getContentHash());
 
@@ -114,6 +151,7 @@ public class DocumentService {
         }
         documentDbService.updateById(doc);
 
+        // 仅内容变更时重新向量化
         if (contentChanged) {
             try {
                 vectorSyncService.asyncVectorize(doc.getId());
@@ -124,6 +162,10 @@ public class DocumentService {
         return doc;
     }
 
+    /**
+     * 逻辑删除文档：删除 MinIO 文件 + 删除向量 + 标记 status=0。
+     * 不做物理删除，保留数据可恢复。
+     */
     public void delete(Long id) {
         QaDocument doc = documentDbService.getById(id);
         if (doc != null && doc.getFileKey() != null) {
@@ -160,6 +202,7 @@ public class DocumentService {
         return fileStorageService.downloadFile(doc.getFileKey());
     }
 
+    /** 根据文件扩展名和 MIME 类型推断文档类型标识 */
     private String resolveFileType(String filename, String contentType) {
         if (filename != null) {
             String lower = filename.toLowerCase();
@@ -176,6 +219,7 @@ public class DocumentService {
         return "TEXT";
     }
 
+    /** 从文件名中提取标题（去掉扩展名） */
     private String extractTitle(String filename) {
         if (filename == null) return "Untitled";
         int dotIdx = filename.lastIndexOf('.');

@@ -14,6 +14,14 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
+/**
+ * 文件存储服务，基于 S3 协议对接 MinIO。
+ *
+ * 存储路径格式：{prefix}/{yyyy/MM/dd}/{uuid12}.{ext}
+ * 例如：documents/2024/01/15/a1b2c3d4e5f6.pdf
+ *
+ * 使用 AWS SDK v2 的 S3Client，通过 S3Config 配置的 endpoint 指向 MinIO。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -22,10 +30,12 @@ public class FileStorageService {
     private final S3Client s3Client;
     private final StorageConfig storageConfig;
 
+    /** 上传文档文件到 MinIO 的 documents/ 目录下 */
     public String uploadDocument(MultipartFile file) {
         return uploadFile(file, "documents");
     }
 
+    /** 从 MinIO 下载文件为字节数组 */
     public byte[] downloadFile(String fileKey) {
         try {
             GetObjectRequest getRequest = GetObjectRequest.builder()
@@ -39,6 +49,7 @@ public class FileStorageService {
         }
     }
 
+    /** 从 MinIO 删除文件，删除失败只打日志不抛异常 */
     public void deleteFile(String fileKey) {
         if (fileKey == null || fileKey.isEmpty()) {
             return;
@@ -55,10 +66,12 @@ public class FileStorageService {
         }
     }
 
+    /** 拼接文件的公开访问 URL */
     public String getFileUrl(String fileKey) {
         return String.format("%s/%s/%s", storageConfig.getEndpoint(), storageConfig.getBucket(), fileKey);
     }
 
+    /** 上传文件到 MinIO，返回存储的 fileKey */
     private String uploadFile(MultipartFile file, String prefix) {
         String originalFilename = file.getOriginalFilename();
         String fileKey = generateFileKey(originalFilename, prefix);
@@ -83,6 +96,7 @@ public class FileStorageService {
         }
     }
 
+    /** 生成存储路径：prefix/yyyy/MM/dd/uuid12.ext */
     private String generateFileKey(String originalFilename, String prefix) {
         String datePath = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);

@@ -20,18 +20,25 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * 通用文档解析服务，使用 Apache Tika 提取文本内容
- * 支持 PDF、DOCX、DOC、TXT、Markdown 等格式
+ * 通用文档解析服务，使用 Apache Tika 从各种格式文件中提取纯文本。
+ *
+ * 支持的格式：PDF、DOCX、DOC、TXT、Markdown、RTF 等。
+ * Tika 的 AutoDetectParser 会自动识别文件格式并选择对应的解析器。
+ *
+ * 解析后的文本会经过 TextCleaningService 清洗，去除图片链接、控制字符等噪声。
+ * 清洗后的文本存入 t_document.content 字段，后续用于分块和向量化。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentParseService {
 
+    /** 单个文件最大可提取的文本长度（5MB），防止 OOM */
     private static final int MAX_TEXT_LENGTH = 5 * 1024 * 1024;
 
     private final TextCleaningService textCleaningService;
 
+    /** 从上传文件中提取文本内容 */
     public String parseContent(MultipartFile file) {
         String fileName = file.getOriginalFilename();
         log.info("开始解析文件: {}", fileName);
@@ -51,6 +58,7 @@ public class DocumentParseService {
         }
     }
 
+    /** 从字节数组中提取文本（供非 MultipartFile 场景使用） */
     public String parseContent(byte[] fileBytes, String fileName) {
         if (fileBytes == null || fileBytes.length == 0) {
             return "";
@@ -65,6 +73,14 @@ public class DocumentParseService {
         }
     }
 
+    /**
+     * Tika 解析核心逻辑。
+     *
+     * - AutoDetectParser: 自动检测文件格式，选择对应解析器（PDF/Word/TXT 等）
+     * - BodyContentHandler: 只提取正文文本，忽略元数据
+     * - NoOpEmbeddedDocumentExtractor: 跳过嵌入的图片/附件，避免解析噪声
+     * - PDFParserConfig: PDF 特殊配置——不提取内嵌图片，按位置排序文本
+     */
     private String doParse(InputStream inputStream) throws IOException, TikaException, SAXException {
         AutoDetectParser parser = new AutoDetectParser();
         BodyContentHandler handler = new BodyContentHandler(MAX_TEXT_LENGTH);
@@ -72,8 +88,10 @@ public class DocumentParseService {
 
         ParseContext context = new ParseContext();
         context.set(Parser.class, parser);
+        // 禁用嵌入文档解析，避免提取出图片二进制内容
         context.set(EmbeddedDocumentExtractor.class, new NoOpEmbeddedDocumentExtractor());
 
+        // PDF 专用配置：不解析内嵌图片，按物理位置排序文本（保持阅读顺序）
         PDFParserConfig pdfConfig = new PDFParserConfig();
         pdfConfig.setExtractInlineImages(false);
         pdfConfig.setSortByPosition(true);
@@ -83,9 +101,7 @@ public class DocumentParseService {
         return handler.toString();
     }
 
-    /**
-     * 禁用嵌入文档（图片、附件等）解析
-     */
+    /** 空操作的嵌入文档提取器，跳过文档中嵌入的图片、附件等 */
     private static class NoOpEmbeddedDocumentExtractor implements EmbeddedDocumentExtractor {
         @Override
         public boolean shouldParseEmbedded(Metadata metadata) {

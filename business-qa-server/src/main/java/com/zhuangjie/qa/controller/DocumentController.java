@@ -20,6 +20,14 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+/**
+ * 文档管理 REST 接口。
+ *
+ * 提供文档的完整生命周期操作：
+ * - 在线创建 / 文件上传 / 编辑 / 删除 / 下载
+ * - 分页查询 / 按模块筛选
+ * - 手动触发单个/全部文档的向量化
+ */
 @RestController
 @RequestMapping("/api/document")
 @RequiredArgsConstructor
@@ -28,6 +36,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final VectorSyncService vectorSyncService;
 
+    /** 分页查询文档（可按模块筛选） */
     @GetMapping("/page")
     public Result<PageResult<QaDocument>> page(
             @RequestParam(required = false) Long moduleId,
@@ -47,11 +56,17 @@ public class DocumentController {
         return Result.ok(documentService.getById(id));
     }
 
+    /** 在线编辑创建文档（直接提交 Markdown 内容） */
     @PostMapping
     public Result<QaDocument> create(@Valid @RequestBody DocumentCreateReq req) {
         return Result.ok(documentService.create(req));
     }
 
+    /**
+     * 文件上传创建文档。
+     * 支持 PDF/Word/TXT/Markdown 格式，自动用 Tika 解析提取文本。
+     * 原件存 MinIO，解析后的文本存数据库。
+     */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<QaDocument> upload(
             @RequestParam("file") MultipartFile file,
@@ -60,6 +75,7 @@ public class DocumentController {
         return Result.ok(documentService.uploadFile(moduleId, title, file));
     }
 
+    /** 下载文档原件（从 MinIO 获取） */
     @GetMapping("/{id}/download")
     public ResponseEntity<byte[]> download(@PathVariable Long id) {
         QaDocument doc = documentService.getById(id);
@@ -90,12 +106,14 @@ public class DocumentController {
         return Result.ok();
     }
 
+    /** 手动触发单个文档的向量化（异步执行） */
     @PostMapping("/{id}/vectorize")
     public Result<Void> vectorize(@PathVariable Long id) {
         vectorSyncService.asyncVectorize(id);
         return Result.ok();
     }
 
+    /** 批量重新向量化所有未向量化的文档 */
     @PostMapping("/vectorize-all")
     public Result<Void> vectorizeAll() {
         vectorSyncService.reVectorizeAll();

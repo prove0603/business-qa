@@ -18,45 +18,71 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * AI 建议生成器，分析代码变更并提出文档更新建议。
+ *
+ * 这是项目中 LLM 的第二种使用模式（区别于 RAG 问答）：
+ * - 不使用向量检索，而是直接将 diff 内容 + 现有文档作为上下文
+ * - 使用独立的 analysisChatClient（无对话记忆）
+ * - 同步调用 .call()（非流式），因为需要完整的 JSON 响应
+ * - 通过 Prompt 约束 AI 返回结构化 JSON（手动解析）
+ *
+ * 优化方向：可改用 Spring AI 的 Structured Output（entity() 方法）自动解析 JSON。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SuggestionGenerator {
 
+    /** 代码分析专用 ChatClient，不带对话记忆 */
     @Qualifier("analysisChatClient")
     private final ChatClient analysisChatClient;
     private final DocumentDbService documentDbService;
     private final ChangeSuggestionDbService changeSuggestionDbService;
 
+    /**
+     * 分析 Prompt 模板。
+     * 包含三部分上下文：代码 diff、模块名、现有文档内容。
+     * 要求 AI 返回纯 JSON 数组，每条建议包含受影响的文档 ID、修改区域、建议文本和原因。
+     */
     private static final String ANALYSIS_PROMPT = """
-            You are a technical analyst. Analyze the code changes and existing documents.
+            你是一个技术分析师。请分析以下代码变更和现有文档。
             
-            ## Code Changes (Diff)
+            ## 代码变更（Diff）
             ```
             %s
             ```
             
-            ## Existing Documents for Module: %s
+            ## 模块「%s」的现有文档
             %s
             
-            ## Task
-            Analyze if any existing documents need updates based on the code changes.
-            Return a JSON array of suggestions. Each suggestion:
+            ## 任务
+            分析代码变更是否影响现有文档，判断哪些文档需要更新。
+            返回一个 JSON 数组，每条建议包含以下字段：
             ```json
             [
               {
-                "document_id": <number>,
-                "affected_section": "<section title or description>",
-                "original_text": "<relevant original text snippet>",
-                "suggested_text": "<suggested updated text>",
-                "reason": "<why this change is needed>"
+                "document_id": <文档ID>,
+                "affected_section": "<受影响的章节标题或描述>",
+                "original_text": "<相关的原始文本片段>",
+                "suggested_text": "<建议修改后的文本>",
+                "reason": "<需要修改的原因>"
               }
             ]
             ```
-            If no updates are needed, return an empty array: []
-            Return ONLY the JSON array, no other text.
+            如果不需要更新，返回空数组：[]
+            只返回 JSON 数组，不要包含其他文本。
             """;
 
+    /**
+     * 异步生成文档更新建议。
+     *
+     * 流程：
+     * 1. 加载模块下所有文档作为 AI 上下文
+     * 2. 截断过长的 diff（防止超过 LLM token 限制）
+     * 3. 拼接 Prompt 并调用 analysisChatClient（同步调用，非流式）
+     * 4. 解析 AI 返回的 JSON，逐条保存到 t_change_suggestion 表
+     */
     @Async
     public void generateSuggestions(ChangeDetection detection, QaModule module, String diffContent) {
         try {
@@ -68,12 +94,14 @@ public class SuggestionGenerator {
 
             String docsContext = buildDocsContext(docs);
 
+            // 截断 diff 到 8000 字符，避免总 prompt 过长超出模型 token 限制
             String truncatedDiff = diffContent.length() > 8000
                     ? diffContent.substring(0, 8000) + "\n... (truncated)"
                     : diffContent;
 
             String prompt = ANALYSIS_PROMPT.formatted(truncatedDiff, module.getModuleName(), docsContext);
 
+            // 同步调用 LLM：.call().content() 返回完整文本（非流式）
             String response = analysisChatClient.prompt()
                     .user(prompt)
                     .call()
@@ -85,6 +113,7 @@ public class SuggestionGenerator {
         }
     }
 
+    /** 将文档列表格式化为 Prompt 上下文（每篇文档截取前 2000 字符） */
     private String buildDocsContext(List<QaDocument> docs) {
         StringBuilder sb = new StringBuilder();
         for (QaDocument doc : docs) {
@@ -98,9 +127,16 @@ public class SuggestionGenerator {
         return sb.toString();
     }
 
+    /**
+     * 解析 AI 返回的 JSON 并保存为建议记录。
+     *
+     * AI 可能在 JSON 外包裹 markdown 代码块（```json...```），需要先清理。
+     * 解析失败（AI 返回非法 JSON）只打 warn 日志，不抛异常。
+     */
     private void parseSuggestionsAndSave(Long detectionId, String aiResponse) {
         try {
             String cleaned = aiResponse.trim();
+            // 有些 LLM 会在 JSON 外包裹 ```json ... ``` 标记
             if (cleaned.startsWith("```")) {
                 cleaned = cleaned.replaceAll("^```\\w*\\n?", "").replaceAll("\\n?```$", "");
             }

@@ -12,6 +12,19 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Path;
 import java.util.List;
 
+/**
+ * 代码变更检测器，编排 Git 同步 → 差异分析 → AI 建议生成 的完整流程。
+ *
+ * 触发方式：前端点击"检测变更"按钮 → ChangeController → detect()
+ *
+ * 整体流程：
+ * 1. 拉取/克隆最新代码（GitSyncService.syncRepo）
+ * 2. 对比上次同步的 commit 和最新 HEAD 的差异
+ * 3. 如果有变更文件，获取 diff 内容
+ * 4. 将 diff 发给 AI（SuggestionGenerator）分析是否需要更新文档
+ *
+ * 检测结果保存在 t_change_detection 表，AI 建议保存在 t_change_suggestion 表。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -23,10 +36,12 @@ public class ChangeDetector {
     private final SuggestionGenerator suggestionGenerator;
 
     /**
-     * Triggers change detection for a module:
-     * 1. Git pull to get latest code
-     * 2. Detect diff from last sync commit
-     * 3. AI-analyze affected documents and generate suggestions
+     * 执行变更检测。
+     *
+     * 三种情况：
+     * 1. 首次检测（lastSyncCommit 为 null）：只记录当前 HEAD，不做 diff
+     * 2. 无变更（HEAD == lastSyncCommit）：直接返回空结果
+     * 3. 有变更：计算 diff，异步触发 AI 分析
      */
     public ChangeDetection detect(Long moduleId) {
         QaModule module = moduleDbService.getById(moduleId);
@@ -34,6 +49,7 @@ public class ChangeDetector {
             throw new RuntimeException("Module not found or no Git URL configured");
         }
 
+        // 先创建检测记录，状态 RUNNING
         ChangeDetection detection = new ChangeDetection();
         detection.setModuleId(moduleId);
         detection.setFromCommit(module.getLastSyncCommit());
@@ -41,9 +57,11 @@ public class ChangeDetector {
         changeDetectionDbService.save(detection);
 
         try {
+            // 第一步：同步 Git 仓库（不存在则克隆，已存在则 pull）
             Path repoPath = gitSyncService.syncRepo(module);
             String currentHead = gitSyncService.resolveHead(repoPath);
 
+            // 情况 1：首次检测，没有上次的 commit 可以对比
             if (module.getLastSyncCommit() == null) {
                 detection.setToCommit(currentHead);
                 detection.setChangedFileCount(0);
@@ -51,6 +69,7 @@ public class ChangeDetector {
                 detection.setChangedFiles("[]");
                 changeDetectionDbService.updateById(detection);
 
+                // 记录当前 HEAD 作为下次对比的基准
                 moduleDbService.lambdaUpdate()
                         .eq(QaModule::getId, moduleId)
                         .set(QaModule::getLastSyncCommit, currentHead)
@@ -58,6 +77,7 @@ public class ChangeDetector {
                 return detection;
             }
 
+            // 情况 2：代码没有变化
             if (currentHead.equals(module.getLastSyncCommit())) {
                 detection.setToCommit(currentHead);
                 detection.setChangedFileCount(0);
@@ -67,6 +87,7 @@ public class ChangeDetector {
                 return detection;
             }
 
+            // 情况 3：有变更，计算差异
             GitSyncService.DeltaResult delta = gitSyncService.detectChanges(
                     repoPath, module.getLastSyncCommit(), currentHead);
 
@@ -77,14 +98,17 @@ public class ChangeDetector {
             detection.setStatus("COMPLETED");
             changeDetectionDbService.updateById(detection);
 
+            // 更新模块的最后同步 commit
             moduleDbService.lambdaUpdate()
                     .eq(QaModule::getId, moduleId)
                     .set(QaModule::getLastSyncCommit, currentHead)
                     .update();
 
+            // 有变更文件时，获取 diff 并异步触发 AI 分析
             if (!changedFiles.isEmpty()) {
                 String diffContent = gitSyncService.getFileDiff(
                         repoPath, module.getLastSyncCommit(), currentHead);
+                // @Async 异步执行，不阻塞当前接口返回
                 suggestionGenerator.generateSuggestions(detection, module, diffContent);
             }
 
