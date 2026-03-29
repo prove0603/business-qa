@@ -9,6 +9,14 @@ spring:
   ai:
     openai:
       api-key: sk-your-dashscope-api-key
+    mcp:
+      client:
+        enabled: true
+        sse:
+          connections:
+            businessQaMcpServer:
+              url: http://localhost:8092
+              sse-endpoint: /sse
 
 qa:
   git:

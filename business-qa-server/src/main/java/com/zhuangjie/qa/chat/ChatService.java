@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -23,6 +24,7 @@ public class ChatService {
     private final ChatClient chatClient;
     private final VectorService vectorService;
     private final ModuleDbService moduleDbService;
+    private final McpToolSupport mcpToolSupport;
 
     /**
      * Stream chat with RAG - retrieves relevant documents then streams LLM response.
@@ -56,6 +58,16 @@ public class ChatService {
                 """.formatted(context, question);
 
         String conversationId = sessionId != null ? sessionId.toString() : "default";
+        ToolCallback[] mcpTools = mcpToolSupport.getToolCallbacks();
+
+        if (mcpTools.length > 0) {
+            return chatClient.prompt()
+                    .user(augmentedQuestion)
+                    .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                    .tools((Object[]) mcpTools)
+                    .stream()
+                    .content();
+        }
 
         return chatClient.prompt()
                 .user(augmentedQuestion)

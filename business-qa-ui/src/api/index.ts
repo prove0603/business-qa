@@ -61,4 +61,13 @@ export const changeApi = {
   ignoreSuggestion: (id: number) => api.put(`/change/suggestions/${id}/ignore`),
 }
 
+export interface McpStatusResponse {
+  clientEnabled: boolean
+  toolCount: number
+}
+
+export const mcpApi = {
+  status: () => api.get('/mcp/status') as Promise<McpStatusResponse>,
+}
+
 export default api

@@ -14,6 +14,7 @@
 
     <modules>
         <module>business-qa-server</module>
+        <module>business-qa-mcp-server</module>
     </modules>
 
     <properties>

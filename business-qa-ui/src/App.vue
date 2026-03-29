@@ -35,6 +35,10 @@
             <el-badge v-if="pendingCount > 0" :value="pendingCount" class="nav-badge" />
           </template>
         </el-menu-item>
+        <el-menu-item index="/mcp-debug">
+          <el-icon><Tools /></el-icon>
+          <span>MCP 调试</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-main class="app-main">

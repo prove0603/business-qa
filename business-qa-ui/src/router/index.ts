@@ -9,6 +9,7 @@ const router = createRouter({
     { path: '/modules', component: () => import('../views/Modules.vue') },
     { path: '/documents', component: () => import('../views/Documents.vue') },
     { path: '/changes', component: () => import('../views/Changes.vue') },
+    { path: '/mcp-debug', component: () => import('../views/McpDebug.vue') },
   ]
 })
 

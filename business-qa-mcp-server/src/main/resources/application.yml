@@ -1,0 +1,26 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: business-qa-mcp-server
+  ai:
+    mcp:
+      server:
+        enabled: true
+        stdio: false
+        name: business-qa-mcp-server
+        version: 1.0.0
+        type: SYNC
+        instructions: "Provide basic business QA tools over HTTP/SSE transport."
+        sse-endpoint: /sse
+        sse-message-endpoint: /mcp/message
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+
+logging:
+  level:
+    root: INFO
