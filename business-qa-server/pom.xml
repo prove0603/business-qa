@@ -109,6 +109,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- MCP Client (connects to remote MCP servers via Streamable HTTP) -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -24,6 +24,20 @@ spring:
         options:
           model: qwen-plus
           temperature: 0.7
+    mcp:
+      client:
+        enabled: true
+        name: business-qa-mcp-client
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 30s
+        toolcallback:
+          enabled: true
+        streamable-http:
+          connections:
+            sentinel-ai:
+              url: http://localhost:8090
+              endpoint: /mcp
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
