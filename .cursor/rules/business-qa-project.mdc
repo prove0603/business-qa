@@ -13,9 +13,11 @@ alwaysApply: true
 基于 RAG 的业务智能问答助手。所有 AI 交互统一使用 Spring AI ChatClient。
 
 ## 技术栈
-- **后端**：Java 21, Spring Boot 3.4.x, Spring AI 1.0.0, MyBatis-Plus 3.5.7, PostgreSQL + pgvector
+- **后端**：Java 21, Spring Boot 3.5.x, Spring AI 1.1.4, MyBatis-Plus 3.5.7, PostgreSQL + pgvector
 - **前端**：Vue 3, TypeScript, Element Plus, Vite 6
-- **AI**：Spring AI ChatClient（OpenAI 兼容接口指向 DashScope），DashScope SDK 仅用于 Embedding
+- **AI**：Spring AI ChatClient + OpenAI EmbeddingModel（均通过 OpenAI 兼容接口指向 DashScope，已移除 DashScope SDK 依赖）
+- **MCP**：Spring AI MCP Client（Streamable HTTP），连接 sentinel-ai MCP Server 获取 SQL 分析工具
+- **RAG**：RetrievalAugmentationAdvisor + VectorStoreDocumentRetriever（相似度阈值 0.5，自动上下文注入）
 
 ## 包结构
 - `com.zhuangjie.qa` — 根包
@@ -45,12 +47,19 @@ alwaysApply: true
 
 ## AI 调用规范
 - 所有 LLM 调用通过 Spring AI `ChatClient`（流式用 stream，同步用 call）
-- Embedding 使用 DashScope SDK 适配器 `DashScopeEmbeddingModel`（text-embedding-v3, 1024 维）
+- Embedding 使用 Spring AI 的 `OpenAiEmbeddingModel`（text-embedding-v3, 1024 维，通过 DashScope OpenAI 兼容接口）
+- 已移除自定义 `DashScopeEmbeddingModel` 适配器和 `dashscope-sdk-java` 依赖
 - 禁止引入 spring-ai-alibaba；DashScope 使用 OpenAI 兼容接口
 - 向量库：PgVectorStore，HNSW 索引，余弦距离，1024 维，表名 `qa_vector`
 - `spring.ai.openai.base-url` 不能包含 `/v1` 后缀（Spring AI 会自动追加）
 - 对话记忆 ID 通过 `ChatMemory.CONVERSATION_ID` 常量传入（不要硬编码字符串）
 - 对话记忆实现：`MessageWindowChatMemory`（InMemoryChatMemory 在 Spring AI 1.0.0 中已移除）
+- MCP 工具通过 `spring-ai-starter-mcp-client` 自动注册为 `ToolCallbackProvider`
+- MCP Tools 不挂在 defaultTools 上，由 ChatService 按场景动态挂载（仅 SQL 相关问题时加载，减少 token 开销）
+- MCP Client `initialized: false`（延迟初始化，Server 未启动不影响 Client 启动）
+- MCP 传输协议：Streamable HTTP（无状态，Server 重启不影响 Client）
+- RAG 使用 `RetrievalAugmentationAdvisor` 作为 Advisor 自动处理（不再手动拼接 context）
+- 模块过滤通过 `VectorStoreDocumentRetriever.FILTER_EXPRESSION` 在每次请求时动态传入
 
 ## 向量化流程
 - `QaApplication` 上的 `@EnableAsync` 启用异步向量化
@@ -107,3 +116,11 @@ alwaysApply: true
 - **仪表盘增强**：趋势图、模块统计、问答热度
 - **向量化失败重试机制**
 - **用户认证与多用户隔离**
+
+## MCP 集成架构
+- **business-qa（Client）** ←Streamable HTTP→ **sentinel-ai（Server）**
+- sentinel-ai 通过 `@Tool` 注解暴露 SQL 分析工具（5 个），自动注册为 MCP Tools
+- business-qa 的 `AiChatConfig` 通过 `ObjectProvider<ToolCallbackProvider>` 可选注入 MCP 工具
+- LLM 根据用户问题自动判断是否调用工具（Function Calling），Spring AI 自动编排工具调用 → 结果返回 → 生成最终答案
+- MCP 配置：`spring.ai.mcp.client.streamable-http.connections.sentinel-ai`
+- sentinel-ai MCP Server 端口 8090，endpoint `/mcp`

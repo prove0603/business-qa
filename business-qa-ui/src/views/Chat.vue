@@ -253,7 +253,8 @@ async function send() {
   sending.value = true
   await scrollToBottom()
 
-  const hadSession = sessionId != null
+  let activeSessionId = sessionId
+  const isNewSession = sessionId == null
 
   try {
     const response = await fetch('/api/chat/stream', {
@@ -276,7 +277,14 @@ async function send() {
       throw new Error('响应体为空')
     }
 
+    const sessionPattern = /^\[SESSION:(\d+)]$/
     await readSseTextStream(body.getReader(), (text) => {
+      const sessionMatch = sessionPattern.exec(text)
+      if (sessionMatch) {
+        activeSessionId = Number(sessionMatch[1])
+        currentSessionId.value = activeSessionId
+        return
+      }
       const last = messages.value[assistantIndex]
       if (last && last.role === 'assistant') {
         last.content += text
@@ -284,16 +292,6 @@ async function send() {
     })
 
     await loadSessions()
-
-    if (!hadSession) {
-      const latest = sessions.value[0]
-      if (latest) {
-        currentSessionId.value = latest.id
-        await loadMessages(latest.id)
-      }
-    } else {
-      await loadMessages(sessionId)
-    }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '流式响应失败')
     messages.value.splice(assistantIndex, 1)

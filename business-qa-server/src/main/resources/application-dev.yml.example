@@ -9,8 +9,20 @@ spring:
   ai:
     openai:
       api-key: sk-your-dashscope-api-key
+    mcp:
+      client:
+        streamable-http:
+          connections:
+            sentinel-ai:
+              url: http://localhost:8090
+              endpoint: /mcp
 
 qa:
+  storage:
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: business-qa
   git:
     username: your-git-username
     password: your-git-password-or-token

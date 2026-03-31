@@ -1,0 +1,54 @@
+---
+description: Cursor 终端中文编码修复方案
+globs: []
+alwaysApply: true
+---
+
+# Terminal 中文编码修复
+
+## 问题
+Windows 系统下 PowerShell 默认 code page 为 936（GBK），而 Java/Spring Boot 输出 UTF-8，
+导致 Cursor 终端中 Maven 编译输出、Spring Boot 日志等中文内容显示乱码。
+
+## 已应用的修复
+
+### 1. Cursor settings.json（全局 IDE 设置）
+
+路径：`%APPDATA%\Cursor\User\settings.json`
+
+添加了以下配置：
+
+```json
+{
+  "terminal.integrated.env.windows": {
+    "JAVA_TOOL_OPTIONS": "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8",
+    "PYTHONIOENCODING": "utf-8",
+    "CHCP": "65001"
+  }
+}
+```
+
+- `JAVA_TOOL_OPTIONS`：强制所有 JVM 进程（包括 Maven、Spring Boot）使用 UTF-8 编码输出
+- `CHCP: 65001`：提示终端使用 UTF-8 code page
+
+### 2. PowerShell Profile（终端启动脚本）
+
+路径：`~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
+
+内容：
+
+```powershell
+chcp 65001 > $null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+```
+
+每次新开 PowerShell 会话时自动切换到 UTF-8。
+
+## 注意事项
+
+- 修改 settings.json 后需**关闭并重新打开终端**才能生效
+- 不要在 `terminal.integrated.profiles.windows` 的 `args` 中使用 `-Command` 参数，
+  会与 Cursor Shell 工具拼接的命令冲突导致语法错误
+- `JAVA_TOOL_OPTIONS` 是解决 Java 进程输出乱码的核心手段，优先级高于 `chcp`

@@ -13,6 +13,7 @@ public class ChatSessionDbService extends ServiceImpl<ChatSessionMapper, ChatSes
     public List<ChatSession> listRecent(int limit) {
         return lambdaQuery()
                 .orderByDesc(ChatSession::getUpdateTime)
+                .orderByDesc(ChatSession::getId)
                 .last("LIMIT " + limit)
                 .list();
     }

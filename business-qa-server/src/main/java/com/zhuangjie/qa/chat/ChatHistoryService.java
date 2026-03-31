@@ -43,6 +43,7 @@ public class ChatHistoryService {
         chatSessionDbService.lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
                 .setSql("message_count = message_count + 1")
+                .set(ChatSession::getUpdateTime, java.time.LocalDateTime.now())
                 .update();
     }
 

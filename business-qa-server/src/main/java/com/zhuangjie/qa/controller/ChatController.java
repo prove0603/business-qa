@@ -24,7 +24,8 @@ public class ChatController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamChat(@RequestBody ChatReq req) {
         Long sessionId = req.sessionId();
-        if (sessionId == null) {
+        boolean isNew = sessionId == null;
+        if (isNew) {
             String title = req.question().length() > 50
                     ? req.question().substring(0, 50) + "..."
                     : req.question();
@@ -37,12 +38,17 @@ public class ChatController {
         Long finalSessionId = sessionId;
         StringBuilder fullResponse = new StringBuilder();
 
-        return chatService.streamChat(req.question(), req.moduleIds(), sessionId)
-                .doOnNext(fullResponse::append)
-                .doOnComplete(() -> {
-                    var refs = chatService.extractSourceRefs(req.question(), req.moduleIds());
-                    chatHistoryService.saveMessage(finalSessionId, "assistant", fullResponse.toString(), refs);
-                });
+        Flux<String> sessionEvent = isNew
+                ? Flux.just("[SESSION:" + finalSessionId + "]")
+                : Flux.empty();
+
+        return sessionEvent.concatWith(
+                chatService.streamChat(req.question(), req.moduleIds(), finalSessionId)
+                        .doOnNext(fullResponse::append)
+                        .doOnComplete(() ->
+                                chatHistoryService.saveMessage(finalSessionId, "assistant",
+                                        fullResponse.toString(), null))
+        );
     }
 
     @PostMapping("/sessions")

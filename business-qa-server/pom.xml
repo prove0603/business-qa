@@ -34,7 +34,7 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Spring AI - OpenAI compatible (for LLM chat via DashScope) -->
+        <!-- Spring AI - OpenAI compatible (LLM Chat + Embedding, via DashScope) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
@@ -46,10 +46,16 @@
             <artifactId>spring-ai-pgvector-store</artifactId>
         </dependency>
 
-        <!-- DashScope SDK (Embedding only) -->
+        <!-- Spring AI - RAG Advisor (RetrievalAugmentationAdvisor) -->
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>dashscope-sdk-java</artifactId>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-rag</artifactId>
+        </dependency>
+
+        <!-- Spring AI - Vector Store Advisors (QuestionAnswerAdvisor) -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
         </dependency>
 
         <!-- Database -->
