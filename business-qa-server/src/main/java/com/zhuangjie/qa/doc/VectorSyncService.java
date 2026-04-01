@@ -49,6 +49,11 @@ public class VectorSyncService {
             log.info("Document vectorized: [{}] {} chunks", doc.getTitle(), chunkCount);
         } catch (Exception e) {
             log.error("Failed to vectorize document {}: {}", documentId, e.getMessage(), e);
+            documentDbService.lambdaUpdate()
+                    .eq(QaDocument::getId, documentId)
+                    .set(QaDocument::getVectorized, false)
+                    .set(QaDocument::getChunkCount, 0)
+                    .update();
         }
     }
 

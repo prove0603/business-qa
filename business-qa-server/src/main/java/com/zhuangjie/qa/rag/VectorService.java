@@ -45,7 +45,11 @@ public class VectorService {
         }
 
         if (!documents.isEmpty()) {
-            vectorStore.add(documents);
+            int batchSize = 10;
+            for (int i = 0; i < documents.size(); i += batchSize) {
+                List<Document> batch = documents.subList(i, Math.min(i + batchSize, documents.size()));
+                vectorStore.add(batch);
+            }
         }
 
         log.info("Vectorized document [{}]: {} chunks", doc.getTitle(), documents.size());
