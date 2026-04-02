@@ -5,10 +5,12 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.zhuangjie.qa.db.entity.ChangeDetection;
 import com.zhuangjie.qa.db.entity.ChangeSuggestion;
+import com.zhuangjie.qa.db.entity.PromptTemplate;
 import com.zhuangjie.qa.db.entity.QaDocument;
 import com.zhuangjie.qa.db.entity.QaModule;
 import com.zhuangjie.qa.db.service.ChangeSuggestionDbService;
 import com.zhuangjie.qa.db.service.DocumentDbService;
+import com.zhuangjie.qa.db.service.PromptTemplateDbService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,8 +29,9 @@ public class SuggestionGenerator {
     private final ChatClient analysisChatClient;
     private final DocumentDbService documentDbService;
     private final ChangeSuggestionDbService changeSuggestionDbService;
+    private final PromptTemplateDbService promptTemplateDbService;
 
-    private static final String ANALYSIS_PROMPT = """
+    private static final String DEFAULT_ANALYSIS_PROMPT = """
             You are a technical analyst. Analyze the code changes and existing documents.
             
             ## Code Changes (Diff)
@@ -72,7 +75,8 @@ public class SuggestionGenerator {
                     ? diffContent.substring(0, 8000) + "\n... (truncated)"
                     : diffContent;
 
-            String prompt = ANALYSIS_PROMPT.formatted(truncatedDiff, module.getModuleName(), docsContext);
+            String promptTemplate = loadAnalysisPrompt();
+            String prompt = promptTemplate.formatted(truncatedDiff, module.getModuleName(), docsContext);
 
             String response = analysisChatClient.prompt()
                     .user(prompt)
@@ -96,6 +100,18 @@ public class SuggestionGenerator {
             sb.append(preview).append("\n\n");
         }
         return sb.toString();
+    }
+
+    private String loadAnalysisPrompt() {
+        try {
+            PromptTemplate template = promptTemplateDbService.getByKey("ANALYSIS_USER");
+            if (template != null) {
+                return template.getContent();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load ANALYSIS_USER prompt from DB: {}", e.getMessage());
+        }
+        return DEFAULT_ANALYSIS_PROMPT;
     }
 
     private void parseSuggestionsAndSave(Long detectionId, String aiResponse) {

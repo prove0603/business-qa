@@ -2,6 +2,8 @@ package com.zhuangjie.qa.chat;
 
 import com.zhuangjie.qa.db.entity.QaModule;
 import com.zhuangjie.qa.db.service.ModuleDbService;
+import com.zhuangjie.qa.guardrail.GuardrailService;
+import com.zhuangjie.qa.guardrail.GuardrailService.GuardrailCheckResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -24,11 +26,19 @@ public class ChatService {
     private final ChatClient chatClient;
     private final ModuleDbService moduleDbService;
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProviders;
+    private final GuardrailService guardrailService;
 
     /**
-     * 流式对话：RAG 由 Advisor 自动处理，MCP Tools 每次请求时挂载（Server 不可用则自动跳过）。
+     * 流式对话：输入护栏 → RAG（Advisor）→ LLM → 输出护栏。
+     * MCP Tools 每次请求时挂载（Server 不可用则自动跳过）。
      */
     public Flux<String> streamChat(String question, List<Long> moduleIds, Long sessionId) {
+        GuardrailCheckResult checkResult = guardrailService.checkInput(question);
+        if (checkResult.blocked()) {
+            log.info("Input blocked by guardrail '{}': {}", checkResult.ruleName(), checkResult.action());
+            return Flux.just("[GUARDRAIL]" + checkResult.message());
+        }
+
         List<Long> effectiveModuleIds = buildEffectiveModuleIds(moduleIds);
         String conversationId = sessionId != null ? sessionId.toString() : "default";
 
@@ -53,6 +63,7 @@ public class ChatService {
 
         return spec.stream()
                 .content()
+                .map(guardrailService::filterOutput)
                 .onErrorResume(e -> {
                     log.error("Chat stream error: {}", e.getMessage());
                     if (e.getMessage() != null && e.getMessage().contains("Client failed to initialize")) {

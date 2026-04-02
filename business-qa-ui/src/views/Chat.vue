@@ -278,11 +278,21 @@ async function send() {
     }
 
     const sessionPattern = /^\[SESSION:(\d+)]$/
+    const guardrailPattern = /^\[GUARDRAIL](.+)$/
     await readSseTextStream(body.getReader(), (text) => {
       const sessionMatch = sessionPattern.exec(text)
       if (sessionMatch) {
         activeSessionId = Number(sessionMatch[1])
         currentSessionId.value = activeSessionId
+        return
+      }
+      const guardrailMatch = guardrailPattern.exec(text)
+      if (guardrailMatch) {
+        const last = messages.value[assistantIndex]
+        if (last && last.role === 'assistant') {
+          last.content = guardrailMatch[1]
+          last.guardrailBlocked = true
+        }
         return
       }
       const last = messages.value[assistantIndex]

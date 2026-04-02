@@ -21,13 +21,14 @@ alwaysApply: true
 
 ## 包结构
 - `com.zhuangjie.qa` — 根包
-- `com.zhuangjie.qa.config` — Spring 配置（含 S3Config, StorageConfig）
+- `com.zhuangjie.qa.config` — Spring 配置（含 S3Config, StorageConfig, AiChatConfig）
 - `com.zhuangjie.qa.common` — Result, PageResult
 - `com.zhuangjie.qa.controller` — REST 控制器（前缀 /api/）
 - `com.zhuangjie.qa.chat` — 对话引擎
 - `com.zhuangjie.qa.doc` — 文档管理
 - `com.zhuangjie.qa.file` — 文件基础设施（S3 存储、Tika 解析、内容类型检测、文本清洗）
 - `com.zhuangjie.qa.change` — Git 变更检测 + AI 建议
+- `com.zhuangjie.qa.guardrail` — AI 护栏机制（输入检查 + 输出脱敏）
 - `com.zhuangjie.qa.rag` — RAG 基础设施（Embedding, VectorStore）
 - `com.zhuangjie.qa.db.entity` — MyBatis-Plus 实体
 - `com.zhuangjie.qa.db.mapper` — MyBatis-Plus Mapper
@@ -61,6 +62,28 @@ alwaysApply: true
 - RAG 使用 `RetrievalAugmentationAdvisor` 作为 Advisor 自动处理（不再手动拼接 context）
 - 模块过滤通过 `VectorStoreDocumentRetriever.FILTER_EXPRESSION` 在每次请求时动态传入
 
+## Prompt 模板管理
+- 系统提示词存储在 `t_prompt_template` 表中，支持在线编辑
+- `AiChatConfig` 启动时从 DB 加载 prompt，找不到则 fallback 到硬编码默认值
+- `SuggestionGenerator` 每次调用时从 DB 加载 `ANALYSIS_USER` prompt 模板（支持热更新）
+- 模板 key 约定：`CHAT_SYSTEM`（对话系统提示词）、`ANALYSIS_SYSTEM`（分析系统提示词）、`ANALYSIS_USER`（分析用户提示词）
+- 用户提示词模板支持 `%s` 占位符，由调用方动态替换
+- 前端管理页面：`/prompts`，支持 CRUD、启停、内容编辑
+- **注意**：系统提示词（CHAT_SYSTEM、ANALYSIS_SYSTEM）修改后需重启服务生效（ChatClient 在启动时构建）
+
+## 护栏机制（Guardrails）
+- **输入护栏**：在 `ChatService.streamChat()` 中，调用 LLM 前先检查用户输入
+  - `GuardrailService.checkInput()` 遍历活跃的 INPUT_KEYWORD / INPUT_REGEX 规则
+  - 命中 BLOCK 规则：返回 `[GUARDRAIL]` 前缀的拦截消息（不调用 LLM）
+  - 前端识别 `[GUARDRAIL]` 前缀，以警告样式展示拦截消息
+- **输出护栏**：在 LLM 流式输出后，对每个 chunk 执行 `GuardrailService.filterOutput()`
+  - 遍历 OUTPUT_REGEX 规则，对匹配的敏感信息（手机号、身份证等）自动脱敏
+- **规则存储**：`t_guardrail_rule` 表，支持在线 CRUD，实时生效无需重启
+- **规则类型**：INPUT_KEYWORD（关键词匹配）、INPUT_REGEX（正则匹配）、OUTPUT_REGEX（输出脱敏）
+- **动作类型**：BLOCK（拦截）、WARN（警告）、MASK（脱敏）
+- **测试接口**：`POST /api/guardrail/test` 可测试输入是否会触发规则
+- 前端管理页面：`/guardrails`，含规则 CRUD + 实时测试功能
+
 ## 向量化流程
 - `QaApplication` 上的 `@EnableAsync` 启用异步向量化
 - 上传/创建/更新 → `VectorSyncService.asyncVectorize()`（异步线程池执行）
@@ -91,6 +114,9 @@ alwaysApply: true
 - 数据库名：`business_qa`
 - 表名前缀 `t_`
 - 向量表：`qa_vector`（PgVectorStore 自动创建，HNSW 索引，1024 维）
+- `t_prompt_template` — Prompt 模板管理（template_key 唯一）
+- `t_guardrail_rule` — 护栏规则（输入拦截 + 输出脱敏）
+- 初始化数据脚本：`db/init-prompt-guardrail.sql`
 
 ## 配置注意事项
 - `application.yml` 的 base-url：`https://dashscope.aliyuncs.com/compatible-mode`（不加 `/v1`）
@@ -108,6 +134,8 @@ alwaysApply: true
 - 仪表盘（四项统计指标）
 - Git 变更检测 + AI 建议生成
 - 变更建议查看/忽略
+- **Prompt 模板管理**：系统/用户提示词在线编辑、启停、CRUD，从 DB 动态加载
+- **AI 护栏机制（Guardrails）**：输入护栏（Prompt 注入防护、敏感词拦截）+ 输出护栏（手机号/身份证自动脱敏），规则在线管理 + 实时测试
 
 ### 待实现
 - **应用建议自动修改文档**：点击"应用"后将建议内容写入文档正文，触发重新向量化
@@ -116,6 +144,17 @@ alwaysApply: true
 - **仪表盘增强**：趋势图、模块统计、问答热度
 - **向量化失败重试机制**
 - **用户认证与多用户隔离**
+
+## API 路径
+
+- `/api/chat/*` — 对话（SSE 流式、会话 CRUD）
+- `/api/module/*` — 模块管理
+- `/api/document/*` — 文档管理（CRUD、上传、向量化）
+- `/api/dashboard/*` — 仪表盘
+- `/api/change/*` — 变更检测与建议
+- `/api/prompt/*` — Prompt 模板管理（CRUD、启停、按 key 查询）
+- `/api/guardrail/*` — 护栏规则管理（CRUD、启停、测试）
+  - `POST /api/guardrail/test` — 测试输入是否触发护栏规则
 
 ## MCP 集成架构
 - **business-qa（Client）** ←Streamable HTTP→ **sentinel-ai（Server）**

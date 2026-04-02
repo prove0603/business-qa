@@ -50,6 +50,26 @@ export const chatApi = {
   deleteSession: (id: number) => api.delete(`/chat/sessions/${id}`),
 }
 
+export const promptApi = {
+  list: () => api.get('/prompt/list'),
+  get: (id: number) => api.get(`/prompt/${id}`),
+  getByKey: (key: string) => api.get(`/prompt/key/${key}`),
+  create: (data: any) => api.post('/prompt', data),
+  update: (id: number, data: any) => api.put(`/prompt/${id}`, data),
+  delete: (id: number) => api.delete(`/prompt/${id}`),
+  toggle: (id: number) => api.put(`/prompt/${id}/toggle`),
+}
+
+export const guardrailApi = {
+  list: () => api.get('/guardrail/list'),
+  get: (id: number) => api.get(`/guardrail/${id}`),
+  create: (data: any) => api.post('/guardrail', data),
+  update: (id: number, data: any) => api.put(`/guardrail/${id}`, data),
+  delete: (id: number) => api.delete(`/guardrail/${id}`),
+  toggle: (id: number) => api.put(`/guardrail/${id}/toggle`),
+  test: (input: string) => api.post('/guardrail/test', input, { headers: { 'Content-Type': 'text/plain' } }),
+}
+
 export const changeApi = {
   detect: (moduleId: number) => api.post(`/change/detect/${moduleId}`, null, { timeout: 300000 }),
   listDetections: (moduleId?: number) =>

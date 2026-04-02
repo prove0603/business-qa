@@ -6,8 +6,12 @@
     <div v-if="message.role === 'user'" class="bubble bubble--user">
       {{ message.content }}
     </div>
-    <div v-else class="bubble bubble--assistant">
-      <div class="markdown-body" v-html="renderedHtml" />
+    <div v-else class="bubble bubble--assistant" :class="{ 'bubble--guardrail': message.guardrailBlocked }">
+      <div v-if="message.guardrailBlocked" class="guardrail-notice">
+        <span class="guardrail-icon">🛡️</span>
+        <span>{{ message.content }}</span>
+      </div>
+      <div v-else class="markdown-body" v-html="renderedHtml" />
       <el-collapse v-if="hasRefs" class="refs-collapse" accordion>
         <el-collapse-item name="refs">
           <template #title>
@@ -44,6 +48,7 @@ export interface ChatMessageModel {
   role: 'user' | 'assistant'
   content: string
   sourceRefs?: SourceRef[]
+  guardrailBlocked?: boolean
 }
 
 const props = defineProps<{
@@ -120,6 +125,25 @@ const hasRefs = computed(
   border: 1px solid var(--el-border-color-lighter);
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.bubble--guardrail {
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-5);
+}
+
+.guardrail-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.guardrail-icon {
+  flex-shrink: 0;
+  font-size: 16px;
 }
 
 .markdown-body :deep(p) {

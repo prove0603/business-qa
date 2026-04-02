@@ -35,6 +35,15 @@
             <el-badge v-if="pendingCount > 0" :value="pendingCount" class="nav-badge" />
           </template>
         </el-menu-item>
+        <el-divider style="margin: 8px 16px; border-color: #333; width: auto;" />
+        <el-menu-item index="/prompts">
+          <el-icon><Setting /></el-icon>
+          <span>提示词</span>
+        </el-menu-item>
+        <el-menu-item index="/guardrails">
+          <el-icon><Lock /></el-icon>
+          <span>护栏规则</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-main class="app-main">
@@ -46,6 +55,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { Setting, Lock } from '@element-plus/icons-vue'
 import { dashboardApi } from './api'
 
 const route = useRoute()
