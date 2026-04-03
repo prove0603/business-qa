@@ -279,6 +279,7 @@ async function send() {
 
     const sessionPattern = /^\[SESSION:(\d+)]$/
     const guardrailPattern = /^\[GUARDRAIL](.+)$/
+    const refsPattern = /^\[REFS:(.+)]$/
     await readSseTextStream(body.getReader(), (text) => {
       const sessionMatch = sessionPattern.exec(text)
       if (sessionMatch) {
@@ -293,6 +294,17 @@ async function send() {
           last.content = guardrailMatch[1]
           last.guardrailBlocked = true
         }
+        return
+      }
+      const refsMatch = refsPattern.exec(text)
+      if (refsMatch) {
+        try {
+          const refs = JSON.parse(refsMatch[1]) as SourceRef[]
+          const last = messages.value[assistantIndex]
+          if (last && last.role === 'assistant') {
+            last.sourceRefs = refs
+          }
+        } catch { /* ignore parse errors */ }
         return
       }
       const last = messages.value[assistantIndex]

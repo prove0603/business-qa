@@ -33,10 +33,11 @@ public class ChatController {
             sessionId = session.getId();
         }
 
-        chatHistoryService.saveMessage(sessionId, "user", req.question(), null);
+        chatHistoryService.saveMessage(sessionId, "user", req.question());
 
         Long finalSessionId = sessionId;
         StringBuilder fullResponse = new StringBuilder();
+        StringBuilder refsJson = new StringBuilder();
 
         Flux<String> sessionEvent = isNew
                 ? Flux.just("[SESSION:" + finalSessionId + "]")
@@ -44,10 +45,17 @@ public class ChatController {
 
         return sessionEvent.concatWith(
                 chatService.streamChat(req.question(), req.moduleIds(), finalSessionId)
-                        .doOnNext(fullResponse::append)
+                        .doOnNext(chunk -> {
+                            if (chunk.startsWith("[REFS:") && chunk.endsWith("]")) {
+                                refsJson.append(chunk.substring(6, chunk.length() - 1));
+                            } else {
+                                fullResponse.append(chunk);
+                            }
+                        })
                         .doOnComplete(() ->
-                                chatHistoryService.saveMessage(finalSessionId, "assistant",
-                                        fullResponse.toString(), null))
+                                chatHistoryService.saveMessageWithRefs(finalSessionId, "assistant",
+                                        fullResponse.toString(),
+                                        refsJson.isEmpty() ? null : refsJson.toString()))
         );
     }
 

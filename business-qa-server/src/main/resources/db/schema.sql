@@ -126,8 +126,10 @@ INSERT INTO t_prompt_template (template_name, template_key, content, template_ty
 回答规则：
 - 优先参考 RAG 检索到的文档内容作答
 - 如果文档中没有相关信息，且有可用的工具，请使用工具查询
-- 在回答中引用文档标题作为来源
-- 使用与用户提问相同的语言回答', 'SYSTEM', '主对话的系统提示词，控制AI的角色和行为'),
+- 使用与用户提问相同的语言回答
+- 【引用规则】当你引用了某份文档的内容时，请在引用处标注来源，格式：[来源：《文档标题》]
+- 如果多个文档都与问题相关，请综合引用并分别标注来源
+- 回答结尾，用一行列出所有引用过的文档标题', 'SYSTEM', '主对话的系统提示词，控制AI的角色和行为'),
 ('代码分析系统提示词', 'ANALYSIS_SYSTEM', 'You are a technical analyst. Analyze code changes and suggest document updates.', 'SYSTEM', '代码变更分析的系统提示词'),
 ('代码分析用户提示词', 'ANALYSIS_USER', 'You are a technical analyst. Analyze the code changes and existing documents.
 
@@ -187,3 +189,5 @@ INSERT INTO t_guardrail_rule (rule_name, rule_type, pattern, action, reply_messa
 ON CONFLICT DO NOTHING;
 
 -- Vector table (qa_vector) is auto-created by Spring AI PgVectorStore
+-- After the table is created, run the following to enable full-text search for hybrid retrieval:
+CREATE INDEX IF NOT EXISTS idx_qa_vector_content_fts ON qa_vector USING GIN(to_tsvector('simple', content));

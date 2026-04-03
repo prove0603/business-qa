@@ -13,23 +13,23 @@ alwaysApply: true
 基于 RAG 的业务智能问答助手。所有 AI 交互统一使用 Spring AI ChatClient。
 
 ## 技术栈
-- **后端**：Java 21, Spring Boot 3.5.x, Spring AI 1.1.4, MyBatis-Plus 3.5.7, PostgreSQL + pgvector
+- **后端**：Java 21, Spring Boot 3.5.x, Spring AI 1.1.4, MyBatis-Plus 3.5.7, Resilience4j 2.2.0, PostgreSQL + pgvector
 - **前端**：Vue 3, TypeScript, Element Plus, Vite 6
 - **AI**：Spring AI ChatClient + OpenAI EmbeddingModel（均通过 OpenAI 兼容接口指向 DashScope，已移除 DashScope SDK 依赖）
 - **MCP**：Spring AI MCP Client（Streamable HTTP），连接 sentinel-ai MCP Server 获取 SQL 分析工具
-- **RAG**：RetrievalAugmentationAdvisor + VectorStoreDocumentRetriever（相似度阈值 0.5，自动上下文注入）
+- **RAG**：RetrievalAugmentationAdvisor + HybridDocumentRetriever（向量 + BM25 混合检索 + RRF 融合）+ RewriteQueryTransformer（查询改写）
 
 ## 包结构
 - `com.zhuangjie.qa` — 根包
-- `com.zhuangjie.qa.config` — Spring 配置（含 S3Config, StorageConfig, AiChatConfig）
+- `com.zhuangjie.qa.config` — Spring 配置（含 S3Config, StorageConfig, AiChatConfig, ResilienceConfig）
 - `com.zhuangjie.qa.common` — Result, PageResult
 - `com.zhuangjie.qa.controller` — REST 控制器（前缀 /api/）
 - `com.zhuangjie.qa.chat` — 对话引擎
-- `com.zhuangjie.qa.doc` — 文档管理
+- `com.zhuangjie.qa.doc` — 文档管理（含 ChunkSplitter 递归分块器）
 - `com.zhuangjie.qa.file` — 文件基础设施（S3 存储、Tika 解析、内容类型检测、文本清洗）
 - `com.zhuangjie.qa.change` — Git 变更检测 + AI 建议
 - `com.zhuangjie.qa.guardrail` — AI 护栏机制（输入检查 + 输出脱敏）
-- `com.zhuangjie.qa.rag` — RAG 基础设施（Embedding, VectorStore）
+- `com.zhuangjie.qa.rag` — RAG 基础设施（VectorService, HybridDocumentRetriever, SummarizingChatMemory, RagConfig）
 - `com.zhuangjie.qa.db.entity` — MyBatis-Plus 实体
 - `com.zhuangjie.qa.db.mapper` — MyBatis-Plus Mapper
 - `com.zhuangjie.qa.db.service` — MyBatis-Plus Service 层
@@ -50,17 +50,18 @@ alwaysApply: true
 - 所有 LLM 调用通过 Spring AI `ChatClient`（流式用 stream，同步用 call）
 - Embedding 使用 Spring AI 的 `OpenAiEmbeddingModel`（text-embedding-v3, 1024 维，通过 DashScope OpenAI 兼容接口）
 - 已移除自定义 `DashScopeEmbeddingModel` 适配器和 `dashscope-sdk-java` 依赖
-- 禁止引入 spring-ai-alibaba；DashScope 使用 OpenAI 兼容接口
+- DashScope 使用 OpenAI 兼容接口（也可按需引入 spring-ai-alibaba）
 - 向量库：PgVectorStore，HNSW 索引，余弦距离，1024 维，表名 `qa_vector`
 - `spring.ai.openai.base-url` 不能包含 `/v1` 后缀（Spring AI 会自动追加）
 - 对话记忆 ID 通过 `ChatMemory.CONVERSATION_ID` 常量传入（不要硬编码字符串）
-- 对话记忆实现：`MessageWindowChatMemory`（InMemoryChatMemory 在 Spring AI 1.0.0 中已移除）
+- 对话记忆实现：`SummarizingChatMemory`（超过阈值时用 LLM 压缩旧消息为摘要，保留完整上下文又控制 token）
 - MCP 工具通过 `spring-ai-starter-mcp-client` 自动注册为 `ToolCallbackProvider`
 - MCP Tools 不挂在 defaultTools 上，由 ChatService 按场景动态挂载（仅 SQL 相关问题时加载，减少 token 开销）
 - MCP Client `initialized: false`（延迟初始化，Server 未启动不影响 Client 启动）
 - MCP 传输协议：Streamable HTTP（无状态，Server 重启不影响 Client）
-- RAG 使用 `RetrievalAugmentationAdvisor` 作为 Advisor 自动处理（不再手动拼接 context）
+- RAG 使用 `RetrievalAugmentationAdvisor` + 查询改写 + 混合检索作为 Advisor 自动处理
 - 模块过滤通过 `VectorStoreDocumentRetriever.FILTER_EXPRESSION` 在每次请求时动态传入
+- ChatClient 默认 Advisor 链（按执行顺序）：LlmRetryAdvisor → RAG Advisor（QueryRewrite → HybridRetrieval → ContextAugment）→ Memory Advisor
 
 ## Prompt 模板管理
 - 系统提示词存储在 `t_prompt_template` 表中，支持在线编辑
@@ -70,6 +71,7 @@ alwaysApply: true
 - 用户提示词模板支持 `%s` 占位符，由调用方动态替换
 - 前端管理页面：`/prompts`，支持 CRUD、启停、内容编辑
 - **注意**：系统提示词（CHAT_SYSTEM、ANALYSIS_SYSTEM）修改后需重启服务生效（ChatClient 在启动时构建）
+- 系统提示词包含引用规则：要求 LLM 在引用文档时使用 `[来源：《文档标题》]` 格式标注
 
 ## 护栏机制（Guardrails）
 - **输入护栏**：在 `ChatService.streamChat()` 中，调用 LLM 前先检查用户输入
@@ -84,10 +86,87 @@ alwaysApply: true
 - **测试接口**：`POST /api/guardrail/test` 可测试输入是否会触发规则
 - 前端管理页面：`/guardrails`，含规则 CRUD + 实时测试功能
 
+## 重试与弹性保护（Retry + Resilience4j）
+
+### LLM 智能重试（Advisor 层）
+- `LlmRetryAdvisor` 同时实现 `CallAdvisor`（同步）和 `StreamAdvisor`（流式），挂载在 ChatClient Advisor 链最外层
+- 重试策略：指数退避（默认 3 次，初始间隔 2s → 4s → 8s）
+- 可重试异常：429/Rate Limit、5xx Server Error、Timeout、Connection Reset
+- 配置项：`qa.resilience.retry.max-retries`、`qa.resilience.retry.initial-backoff`
+
+### 限流（RateLimiter）
+- Resilience4j `RateLimiter`，在 `ChatService.streamChat()` 入口处检查
+- 超出限制时直接返回友好提示（不消耗 AI Token）
+- 默认：每分钟 10 次请求，超时等待 5 秒
+- 配置项：`qa.resilience.rate-limiter.*`（limit-for-period、limit-refresh-period、timeout-duration）
+
+### 熔断（CircuitBreaker）
+- Resilience4j `CircuitBreaker`，通过 `CircuitBreakerOperator.of()` 包装在 Flux 流上
+- AI 服务连续失败达到阈值时自动熔断，快速失败避免级联故障
+- 默认：滑动窗口 10 次调用，失败率 50% 触发熔断，开启状态持续 30 秒，半开状态允许 3 次探测
+- 状态转换自动打印日志（CLOSED → OPEN → HALF_OPEN → CLOSED）
+- 配置项：`qa.resilience.circuit-breaker.*`
+
+## RAG 检索优化
+
+### 分块策略（ChunkSplitter）
+- **递归分割**：按分割符优先级递归拆分（Markdown 标题 → 空行段落 → 句号/句末 → 换行 → 硬截断）
+- **重叠窗口**：相邻块之间保留 overlap 字符的重叠，避免语义在块边界处断裂
+- 默认参数：max=800, min=80, overlap=150（可通过 `qa.rag.chunk-*` 配置）
+- 修改分块参数后，需对已有文档重新向量化（`VectorSyncService.reVectorizeAll()`）
+
+### 混合检索（HybridDocumentRetriever）
+- **双路检索**：向量语义检索 + PG 全文关键词检索（BM25），覆盖"换了说法但意思一样"和"关键词精确命中"两种场景
+- **RRF 融合**：Reciprocal Rank Fusion 合并两路排名，出现在两路结果中的文档得分更高
+- RRF 公式：`score(d) = Σ 1/(k + rank_i(d))`，经典常数 k=60
+- PG 全文检索使用 `to_tsvector('simple', content)` + `plainto_tsquery`（'simple' 配置按空白/标点分词，中英文基本支持；如需更好中文分词可安装 zhparser 扩展）
+- 需要在 qa_vector 表上创建 GIN 索引：`CREATE INDEX ... USING GIN(to_tsvector('simple', content))`
+- 配置项：`qa.rag.top-k`（最终返回数）、`qa.rag.similarity-threshold`、`qa.rag.rrf-k`
+
+### 查询改写（RewriteQueryTransformer）
+- Spring AI 内置 `RewriteQueryTransformer`，用 LLM 将用户口语化查询改写为更精确的检索语句
+- 改写后的查询与文档中的专业表述更接近，向量距离更近，检索精度提升
+- 每次查询额外消耗约 50 token 的改写调用（可接受的成本开销）
+- 在 RAG Advisor 中作为 `queryTransformers` 配置，检索前自动执行
+
+### 对话摘要压缩（SummarizingChatMemory）
+- 替代原 `MessageWindowChatMemory`，超过阈值时用 LLM 将旧消息压缩为摘要
+- `get()` 返回 `[历史对话摘要]` SystemMessage + 最近 N 条消息
+- 摘要生成失败时 graceful fallback 到简单截断（不影响对话）
+- 配置项：`qa.rag.memory-max-messages`（保留近期消息数）、`qa.rag.memory-summarize-threshold`（触发摘要的消息数）
+
+### 引用溯源
+- **LLM 侧**：系统提示词指示 LLM 在引用处标注 `[来源：《文档标题》]`
+- **后端侧**：ChatService 做预检索（`VectorService.search`），将 top-5 命中文档作为 sourceRefs，通过 `[REFS:json]` SSE 事件发送给前端
+- **前端侧**：
+  - 解析 `[REFS:...]` 事件，填充 ChatMessage 的 `sourceRefs` 属性
+  - 引用来源折叠面板（`el-collapse`）展示文档标题、模块标签、摘要片段
+  - LLM 输出中的 `[来源：《xxx》]` 标记被渲染为 `citation-tag` 样式（蓝色圆角徽章）
+- sourceRefs 持久化到 `t_chat_message.source_refs`（JSONB），历史消息也可展示引用
+
+### 调用链路（完整流程）
+```
+用户请求
+  → RateLimiter 限流
+  → 输入护栏
+  → 引用预检索（VectorService.search → sourceRefs）
+  → ChatClient.stream()
+    → LlmRetryAdvisor(重试)
+    → RetrievalAugmentationAdvisor:
+      → RewriteQueryTransformer(查询改写)
+      → HybridDocumentRetriever(向量 + BM25 + RRF)
+      → ContextualQueryAugmenter(上下文注入)
+    → MessageChatMemoryAdvisor(SummarizingChatMemory)
+    → LLM API 调用
+  → CircuitBreaker 熔断保护
+  → 输出护栏
+  → [REFS:json] + 流式内容 → 前端
+```
+
 ## 向量化流程
 - `QaApplication` 上的 `@EnableAsync` 启用异步向量化
 - 上传/创建/更新 → `VectorSyncService.asyncVectorize()`（异步线程池执行）
-- `ChunkSplitter`：按 Markdown 标题分块，再按段落拆分，最大 1000 字符，最小 50 字符
+- `ChunkSplitter`：递归分割 + 重叠窗口（max=800, overlap=150）
 - `VectorService.vectorizeDocument()`：删旧向量 → 分块 → Embedding → 存入 PgVectorStore
 - 删除向量使用字符串过滤语法 `"document_id == " + id`（通过 `delete(String)`）
 - `VectorService.search()` 使用 `FilterExpressionBuilder.in("module_id", ...)` 做模块范围过滤
@@ -97,6 +176,7 @@ alwaysApply: true
 - Composition API + `<script setup lang="ts">`
 - API 层在 `src/api/index.ts`，axios 响应拦截器解包 `Result.data`
 - SSE 流式通过 `fetch` + `ReadableStream`（不用 EventSource）
+- SSE 特殊事件解析：`[SESSION:id]`（新建会话）、`[GUARDRAIL]msg`（护栏拦截）、`[REFS:json]`（引用来源）
 - 时间格式化统一使用 `utils/format.ts`
 - Vite 代理：`/api -> http://localhost:8091`
 - Element Plus 语言：`zh-CN`，所有界面文本使用中文
@@ -113,7 +193,7 @@ alwaysApply: true
 - PostgreSQL + pgvector 扩展
 - 数据库名：`business_qa`
 - 表名前缀 `t_`
-- 向量表：`qa_vector`（PgVectorStore 自动创建，HNSW 索引，1024 维）
+- 向量表：`qa_vector`（PgVectorStore 自动创建，HNSW 索引，1024 维）+ GIN 全文检索索引
 - `t_prompt_template` — Prompt 模板管理（template_key 唯一）
 - `t_guardrail_rule` — 护栏规则（输入拦截 + 输出脱敏）
 - 初始化数据脚本：`db/init-prompt-guardrail.sql`
@@ -123,6 +203,7 @@ alwaysApply: true
 - `application-dev.yml` 包含实际 API Key 和 GitLab PAT，已被 gitignore 排除
 - `.vscode/launch.json` 通过 `AI_DASHSCOPE_API_KEY` 环境变量注入密钥
 - MinIO 启动脚本在 `scripts/` 目录（ps1 + bat）
+- RAG 配置前缀：`qa.rag.*`（chunk-size, chunk-overlap, top-k, similarity-threshold, rrf-k, memory-max-messages, memory-summarize-threshold）
 
 ## 功能完成状态与规划
 
@@ -136,6 +217,13 @@ alwaysApply: true
 - 变更建议查看/忽略
 - **Prompt 模板管理**：系统/用户提示词在线编辑、启停、CRUD，从 DB 动态加载
 - **AI 护栏机制（Guardrails）**：输入护栏（Prompt 注入防护、敏感词拦截）+ 输出护栏（手机号/身份证自动脱敏），规则在线管理 + 实时测试
+- **LLM 智能重试（LlmRetryAdvisor）**：Spring AI Advisor 层指数退避重试，支持同步和流式调用
+- **限流与熔断（Resilience4j）**：RateLimiter 控制请求频率 + CircuitBreaker 保护下游 AI 服务
+- **递归分块 + 重叠窗口（ChunkSplitter）**：按语义边界递归分割，相邻块保留上下文重叠
+- **混合检索（HybridDocumentRetriever）**：向量语义 + PG BM25 双路检索 + RRF 融合排序
+- **查询改写（RewriteQueryTransformer）**：LLM 自动将口语化查询改写为精确检索语句
+- **对话摘要压缩（SummarizingChatMemory）**：超出阈值时自动压缩旧消息为摘要，控制 token 消耗
+- **引用溯源**：LLM 内联引用标注 + sourceRefs 预检索 + 前端引用面板 + citation-tag 渲染
 
 ### 待实现
 - **应用建议自动修改文档**：点击"应用"后将建议内容写入文档正文，触发重新向量化
@@ -144,6 +232,8 @@ alwaysApply: true
 - **仪表盘增强**：趋势图、模块统计、问答热度
 - **向量化失败重试机制**
 - **用户认证与多用户隔离**
+- **中文分词增强**：安装 PG zhparser 扩展，提升 BM25 中文检索效果
+- **检索效果可视化**：调试模式展示命中分块、相似度分数
 
 ## API 路径
 

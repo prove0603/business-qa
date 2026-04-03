@@ -49,9 +49,31 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 qa:
+  resilience:
+    retry:
+      max-retries: 3
+      initial-backoff: 2s
+    rate-limiter:
+      limit-for-period: 10
+      limit-refresh-period: 60s
+      timeout-duration: 5s
+    circuit-breaker:
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 30s
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      permitted-in-half-open: 3
   rag:
     enabled: true
     embedding-model: text-embedding-v3
+    chunk-size: 800
+    chunk-min-size: 80
+    chunk-overlap: 150
+    top-k: 5
+    similarity-threshold: 0.45
+    rrf-k: 60
+    memory-max-messages: 16
+    memory-summarize-threshold: 24
   storage:
     endpoint: ${QA_STORAGE_ENDPOINT:http://localhost:9000}
     access-key: ${QA_STORAGE_ACCESS_KEY:minioadmin}

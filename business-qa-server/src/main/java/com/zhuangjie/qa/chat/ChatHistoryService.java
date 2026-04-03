@@ -30,13 +30,17 @@ public class ChatHistoryService {
         return session;
     }
 
-    public void saveMessage(Long sessionId, String role, String content, List<ChatService.SourceReference> refs) {
+    public void saveMessage(Long sessionId, String role, String content) {
+        saveMessageWithRefs(sessionId, role, content, null);
+    }
+
+    public void saveMessageWithRefs(Long sessionId, String role, String content, String refsJson) {
         ChatMessage message = new ChatMessage();
         message.setSessionId(sessionId);
         message.setRole(role);
         message.setContent(content);
-        if (refs != null && !refs.isEmpty()) {
-            message.setSourceRefs(toJson(refs));
+        if (refsJson != null && !refsJson.isBlank()) {
+            message.setSourceRefs(refsJson);
         }
         chatMessageDbService.save(message);
 

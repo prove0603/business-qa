@@ -77,7 +77,12 @@ marked.use({
 
 const renderedHtml = computed(() => {
   if (props.message.role !== 'assistant') return ''
-  return marked.parse(props.message.content || '') as string
+  let html = marked.parse(props.message.content || '') as string
+  html = html.replace(
+    /\[来源[：:]《(.+?)》\]/g,
+    '<span class="citation-tag" title="引用来源">📎 $1</span>'
+  )
+  return html
 })
 
 const hasRefs = computed(
@@ -275,5 +280,19 @@ const hasRefs = computed(
   color: var(--el-text-color-secondary);
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.markdown-body :deep(.citation-tag) {
+  display: inline-block;
+  padding: 1px 8px;
+  margin: 0 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 10px;
+  white-space: nowrap;
+  cursor: default;
 }
 </style>
