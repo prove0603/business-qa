@@ -44,6 +44,31 @@ public class AiChatConfig {
 
     // ─── ChatMemory（带摘要压缩） ───
 
+    /**
+     * RAG（检索增强生成）核心组件配置。
+     * 
+     * 工作流程：
+     * 1. 用户提问 → 2. 检索相关文档 → 3. 将文档注入问题上下文 → 4. AI 基于上下文回答
+     * 
+     * 参数说明：
+     * - similarityThreshold(0.5): 相似度阈值，只返回相似度 >= 0.5 的文档片段
+     *   ├─ 范围：0.0 ~ 1.0
+     *   ├─ 值越高：匹配越严格，返回的文档越相关但可能遗漏
+     *   └─ 值越低：匹配越宽松，返回更多文档但可能包含噪声
+     * 
+     * - topK(5): 返回最相关的前 5 个文档片段
+     *   ├─ 避免返回太多内容导致上下文过长
+     *   └─ 同时提供足够的知识片段供 AI 参考
+     * 
+     * - allowEmptyContext(true): 容错机制
+     *   ├─ 当没有检索到相关文档时，仍允许 AI 使用自身知识回答
+     *   └─ 防止因知识库缺失导致完全无法回答
+     * 
+     * ObjectProvider 的作用：
+     * - 延迟获取 VectorStore Bean，避免启动时因 Bean 不存在而报错
+     * - 实现可选依赖：有 VectorStore 就用 RAG，没有就直接回答
+     * - 支持运行时动态切换 VectorStore 实现
+     */
     @Bean
     public ChatMemory chatMemory(ChatModel chatModel,
                                  @Value("${qa.rag.memory-max-messages:16}") int maxMessages,
@@ -68,7 +93,7 @@ public class AiChatConfig {
         if (vectorStore == null) {
             log.warn("VectorStore not available, RAG advisor will use empty retriever");
             return RetrievalAugmentationAdvisor.builder()
-                    .documentRetriever(query -> java.util.List.of())
+                    .documentRetriever(query -> java.util.List.of())  // 空检索器：总是返回空文档列表
                     .queryAugmenter(ContextualQueryAugmenter.builder().allowEmptyContext(true).build())
                     .build();
         }
@@ -85,7 +110,7 @@ public class AiChatConfig {
                 .queryTransformers(queryRewriter)
                 .documentRetriever(hybridRetriever)
                 .queryAugmenter(ContextualQueryAugmenter.builder()
-                        .allowEmptyContext(true)
+                        .allowEmptyContext(true)            // 即使没找到文档，也让 AI 继续回答
                         .build())
                 .build();
     }
