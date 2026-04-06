@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,12 +19,31 @@ public class GuardrailService {
 
     private final GuardrailRuleDbService guardrailRuleDbService;
 
-    /**
-     * Check user input against active guardrail rules.
-     * Returns null if input passes; returns a block/warn message if intercepted.
-     */
+    /** 规则本地缓存，避免每个 SSE chunk 都查一次数据库 */
+    private final AtomicReference<List<GuardrailRule>> cachedRules = new AtomicReference<>();
+    private final AtomicLong cacheTimestamp = new AtomicLong(0);
+    private static final long CACHE_TTL_MS = 30_000;
+
+    private List<GuardrailRule> getActiveRules() {
+        long now = System.currentTimeMillis();
+        List<GuardrailRule> cached = cachedRules.get();
+        if (cached != null && now - cacheTimestamp.get() < CACHE_TTL_MS) {
+            return cached;
+        }
+        List<GuardrailRule> fresh = guardrailRuleDbService.listActive();
+        cachedRules.set(fresh);
+        cacheTimestamp.set(now);
+        return fresh;
+    }
+
+    /** 规则变更后可手动调用刷新缓存 */
+    public void refreshCache() {
+        cachedRules.set(null);
+        cacheTimestamp.set(0);
+    }
+
     public GuardrailCheckResult checkInput(String input) {
-        List<GuardrailRule> inputRules = guardrailRuleDbService.listActive().stream()
+        List<GuardrailRule> inputRules = getActiveRules().stream()
                 .filter(r -> r.getRuleType().startsWith("INPUT_"))
                 .toList();
 
@@ -43,11 +64,8 @@ public class GuardrailService {
         return GuardrailCheckResult.PASS;
     }
 
-    /**
-     * Filter AI output through output guardrail rules (masking sensitive patterns).
-     */
     public String filterOutput(String output) {
-        List<GuardrailRule> outputRules = guardrailRuleDbService.listActive().stream()
+        List<GuardrailRule> outputRules = getActiveRules().stream()
                 .filter(r -> "OUTPUT_REGEX".equals(r.getRuleType()) && "MASK".equals(r.getAction()))
                 .toList();
 

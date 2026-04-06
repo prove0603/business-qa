@@ -189,5 +189,16 @@ INSERT INTO t_guardrail_rule (rule_name, rule_type, pattern, action, reply_messa
 ON CONFLICT DO NOTHING;
 
 -- Vector table (qa_vector) is auto-created by Spring AI PgVectorStore
--- After the table is created, run the following to enable full-text search for hybrid retrieval:
+
+-- ========== Full-text search setup for hybrid retrieval ==========
+-- Option A: Basic (no extra extensions needed)
 CREATE INDEX IF NOT EXISTS idx_qa_vector_content_fts ON qa_vector USING GIN(to_tsvector('simple', content));
+
+-- Option B: With zhparser for better Chinese tokenization
+-- Step 1: Install zhparser extension (requires server-side install, e.g. apt-get install postgresql-16-zhparser)
+-- Step 2: Run these SQL commands:
+--   CREATE EXTENSION IF NOT EXISTS zhparser;
+--   CREATE TEXT SEARCH CONFIGURATION chinese (PARSER = zhparser);
+--   ALTER TEXT SEARCH CONFIGURATION chinese ADD MAPPING FOR n,v,a,i,e,l WITH simple;
+--   CREATE INDEX IF NOT EXISTS idx_qa_vector_content_fts_zh ON qa_vector USING GIN(to_tsvector('chinese', content));
+-- The application will auto-detect and use 'chinese' config when available.

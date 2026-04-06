@@ -31,6 +31,7 @@ public class GuardrailController {
     @PostMapping
     public Result<GuardrailRule> create(@RequestBody GuardrailRule rule) {
         guardrailRuleDbService.save(rule);
+        guardrailService.refreshCache();
         return Result.ok(rule);
     }
 
@@ -38,12 +39,14 @@ public class GuardrailController {
     public Result<GuardrailRule> update(@PathVariable Long id, @RequestBody GuardrailRule rule) {
         rule.setId(id);
         guardrailRuleDbService.updateById(rule);
+        guardrailService.refreshCache();
         return Result.ok(guardrailRuleDbService.getById(id));
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         guardrailRuleDbService.removeById(id);
+        guardrailService.refreshCache();
         return Result.ok();
     }
 
@@ -53,6 +56,7 @@ public class GuardrailController {
         if (rule != null) {
             rule.setIsActive(!rule.getIsActive());
             guardrailRuleDbService.updateById(rule);
+            guardrailService.refreshCache();
         }
         return Result.ok(guardrailRuleDbService.getById(id));
     }
