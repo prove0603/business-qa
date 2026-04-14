@@ -61,6 +61,7 @@ public class GuardrailController {
         return Result.ok(guardrailRuleDbService.getById(id));
     }
 
+    /** 【测试用】验证输入文本是否触发护栏规则，用于规则配置后的联调验证 */
     @PostMapping("/test")
     public Result<GuardrailCheckResult> testInput(@RequestBody String input) {
         return Result.ok(guardrailService.checkInput(input));

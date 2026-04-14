@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * AI 文档更新建议生成器：基于代码变更 diff 和现有文档，调用 LLM 分析并生成文档更新建议。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -60,6 +63,9 @@ public class SuggestionGenerator {
             Return ONLY the JSON array, no other text.
             """;
 
+    /**
+     * 异步执行：加载模块下文档上下文与提示词，调用 {@code analysisChatClient} 分析 diff 与文档后生成建议并入库。
+     */
     @Async
     public void generateSuggestions(ChangeDetection detection, QaModule module, String diffContent) {
         try {
@@ -71,6 +77,7 @@ public class SuggestionGenerator {
 
             String docsContext = buildDocsContext(docs);
 
+            // 控制 prompt 长度，避免超出模型上下文
             String truncatedDiff = diffContent.length() > 8000
                     ? diffContent.substring(0, 8000) + "\n... (truncated)"
                     : diffContent;
@@ -78,6 +85,7 @@ public class SuggestionGenerator {
             String promptTemplate = loadAnalysisPrompt();
             String prompt = promptTemplate.formatted(truncatedDiff, module.getModuleName(), docsContext);
 
+            // 调用分析专用 ChatClient，期望返回可解析的 JSON 数组
             String response = analysisChatClient.prompt()
                     .user(prompt)
                     .call()
@@ -102,6 +110,9 @@ public class SuggestionGenerator {
         return sb.toString();
     }
 
+    /**
+     * 从数据库加载分析提示词模板（键 {@code ANALYSIS_USER}）；加载失败或无记录时使用硬编码默认模板。
+     */
     private String loadAnalysisPrompt() {
         try {
             PromptTemplate template = promptTemplateDbService.getByKey("ANALYSIS_USER");
@@ -114,8 +125,12 @@ public class SuggestionGenerator {
         return DEFAULT_ANALYSIS_PROMPT;
     }
 
+    /**
+     * 解析 AI 返回的 JSON 数组格式建议，逐条构造 {@link ChangeSuggestion} 并写入数据库。
+     */
     private void parseSuggestionsAndSave(Long detectionId, String aiResponse) {
         try {
+            // 去掉模型可能包裹的 markdown 代码块标记
             String cleaned = aiResponse.trim();
             if (cleaned.startsWith("```")) {
                 cleaned = cleaned.replaceAll("^```\\w*\\n?", "").replaceAll("\\n?```$", "");

@@ -4,6 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+/** MinIO 对象存储配置属性，从 application.yml 的 qa.storage.* 读取 */
 @Data
 @Component
 @ConfigurationProperties(prefix = "qa.storage")

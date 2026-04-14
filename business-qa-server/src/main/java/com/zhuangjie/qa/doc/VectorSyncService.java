@@ -10,6 +10,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+/**
+ * 向量同步服务：负责文档的异步向量化和向量数据管理。
+ * 使用 @Async 异步执行，避免阻塞文档上传/更新的主流程。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -19,6 +23,10 @@ public class VectorSyncService {
     private final DocumentDbService documentDbService;
     private final ModuleDbService moduleDbService;
 
+    /**
+     * 异步向量化单篇文档：分块 → Embedding → 存入 PgVectorStore。
+     * 完成后更新文档的 vectorized 状态和 chunkCount。
+     */
     @Async
     public void asyncVectorize(Long documentId) {
         try {
@@ -65,6 +73,7 @@ public class VectorSyncService {
         }
     }
 
+    /** 批量重新向量化所有未向量化的文档（通常在修改分块参数后调用） */
     public void reVectorizeAll() {
         var docs = documentDbService.listUnvectorized();
         log.info("Re-vectorizing {} documents", docs.size());

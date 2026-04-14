@@ -5,6 +5,7 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/** Web MVC 配置：CORS 跨域和静态资源处理 */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 

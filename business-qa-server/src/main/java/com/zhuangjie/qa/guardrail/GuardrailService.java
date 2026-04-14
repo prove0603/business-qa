@@ -12,6 +12,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * AI 护栏服务：提供输入检查（拦截恶意/敏感输入）和输出脱敏（自动遮盖手机号、身份证等）。
+ * 规则从数据库加载并本地缓存（30秒 TTL），规则变更后可手动刷新。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,6 +46,10 @@ public class GuardrailService {
         cacheTimestamp.set(0);
     }
 
+    /**
+     * 输入护栏检查：遍历所有 INPUT_ 类型的活跃规则，匹配则返回拦截结果。
+     * 支持关键词匹配（INPUT_KEYWORD）和正则匹配（INPUT_REGEX）两种规则类型。
+     */
     public GuardrailCheckResult checkInput(String input) {
         List<GuardrailRule> inputRules = getActiveRules().stream()
                 .filter(r -> r.getRuleType().startsWith("INPUT_"))
@@ -64,6 +72,10 @@ public class GuardrailService {
         return GuardrailCheckResult.PASS;
     }
 
+    /**
+     * 输出护栏过滤：对 LLM 输出的每个 chunk 执行 OUTPUT_REGEX 规则匹配，
+     * 将命中的敏感信息（如手机号、身份证）自动脱敏为部分遮盖格式。
+     */
     public String filterOutput(String output) {
         List<GuardrailRule> outputRules = getActiveRules().stream()
                 .filter(r -> "OUTPUT_REGEX".equals(r.getRuleType()) && "MASK".equals(r.getAction()))
@@ -104,6 +116,7 @@ public class GuardrailService {
         }
     }
 
+    /** 脱敏处理：保留前2位和后2位，中间用 * 替换 */
     private String maskString(String original) {
         if (original.length() <= 4) return "****";
         return original.substring(0, 2) + "*".repeat(original.length() - 4) + original.substring(original.length() - 2);

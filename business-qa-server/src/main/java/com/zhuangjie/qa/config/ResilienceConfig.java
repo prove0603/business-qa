@@ -12,10 +12,10 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * Resilience4j configuration for AI service protection.
+ * Resilience4j 弹性保护配置：为 AI 服务调用提供限流和熔断保护。
  * <ul>
- *   <li>RateLimiter — prevents excessive API calls (token cost control)</li>
- *   <li>CircuitBreaker — fast-fail when AI service is down</li>
+ *   <li>RateLimiter — 限制 API 调用频率，控制 Token 消耗成本</li>
+ *   <li>CircuitBreaker — AI 服务不可用时快速失败，避免级联故障</li>
  * </ul>
  */
 @Slf4j

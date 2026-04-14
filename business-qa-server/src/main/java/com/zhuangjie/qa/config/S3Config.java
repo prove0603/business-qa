@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 
 import java.net.URI;
 
+/** MinIO（S3 兼容）客户端配置：创建 S3Client 并确保 Bucket 存在 */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor

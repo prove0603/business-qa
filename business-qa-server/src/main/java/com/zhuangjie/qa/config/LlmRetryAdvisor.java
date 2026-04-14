@@ -13,10 +13,10 @@ import reactor.util.retry.Retry;
 import java.time.Duration;
 
 /**
- * Spring AI Advisor that transparently retries failed LLM calls with exponential backoff.
+ * LLM 智能重试 Advisor：对失败的 LLM 调用透明地执行指数退避重试。
  * <p>
- * Retries on: 429 (rate limit), 5xx (server error), timeout.
- * Applies to both sync ({@link CallAdvisor}) and streaming ({@link StreamAdvisor}) paths.
+ * 可重试场景：429（频率超限）、5xx（服务端故障）、超时。
+ * 同时支持同步调用（{@link CallAdvisor}）和流式调用（{@link StreamAdvisor}）。
  */
 @Slf4j
 public class LlmRetryAdvisor implements CallAdvisor, StreamAdvisor {

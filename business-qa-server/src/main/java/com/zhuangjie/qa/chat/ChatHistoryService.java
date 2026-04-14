@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/** 对话历史管理：会话和消息的增删查，支持保存引用来源数据 */
 @Slf4j
 @Service
 @RequiredArgsConstructor

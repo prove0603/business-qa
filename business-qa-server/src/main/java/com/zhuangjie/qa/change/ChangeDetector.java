@@ -23,10 +23,10 @@ public class ChangeDetector {
     private final SuggestionGenerator suggestionGenerator;
 
     /**
-     * Triggers change detection for a module:
-     * 1. Git pull to get latest code
-     * 2. Detect diff from last sync commit
-     * 3. AI-analyze affected documents and generate suggestions
+     * 触发指定模块的变更检测流程：
+     * 1. Git pull 拉取最新代码
+     * 2. 对比上次同步 commit，检测差异文件
+     * 3. 调用 AI 分析受影响的文档，生成更新建议
      */
     public ChangeDetection detect(Long moduleId) {
         QaModule module = moduleDbService.getById(moduleId);
@@ -34,6 +34,7 @@ public class ChangeDetector {
             throw new RuntimeException("Module not found or no Git URL configured");
         }
 
+        // 创建检测记录并标记为进行中
         ChangeDetection detection = new ChangeDetection();
         detection.setModuleId(moduleId);
         detection.setFromCommit(module.getLastSyncCommit());
@@ -44,6 +45,7 @@ public class ChangeDetector {
             Path repoPath = gitSyncService.syncRepo(module);
             String currentHead = gitSyncService.resolveHead(repoPath);
 
+            // 首次同步：无基准 commit，仅记录 HEAD 并更新模块，不产生 diff
             if (module.getLastSyncCommit() == null) {
                 detection.setToCommit(currentHead);
                 detection.setChangedFileCount(0);
@@ -58,6 +60,7 @@ public class ChangeDetector {
                 return detection;
             }
 
+            // 与上次同步一致：无代码变更
             if (currentHead.equals(module.getLastSyncCommit())) {
                 detection.setToCommit(currentHead);
                 detection.setChangedFileCount(0);
@@ -67,6 +70,7 @@ public class ChangeDetector {
                 return detection;
             }
 
+            // 计算两次 commit 间的变更文件列表并落库
             GitSyncService.DeltaResult delta = gitSyncService.detectChanges(
                     repoPath, module.getLastSyncCommit(), currentHead);
 
@@ -82,6 +86,7 @@ public class ChangeDetector {
                     .set(QaModule::getLastSyncCommit, currentHead)
                     .update();
 
+            // 有变更时拉取完整 diff，异步触发 AI 建议生成（使用更新前的 fromCommit 与当前 HEAD）
             if (!changedFiles.isEmpty()) {
                 String diffContent = gitSyncService.getFileDiff(
                         repoPath, module.getLastSyncCommit(), currentHead);

@@ -41,8 +41,7 @@ public class GitSyncService {
     private String gitPassword;
 
     /**
-     * Syncs the repository: clone if not exists, pull if exists.
-     * Returns the local repo path.
+     * 同步仓库：不存在则克隆，已存在则拉取。返回本地仓库路径。
      */
     public Path syncRepo(QaModule module) throws IOException, GitAPIException {
         Path cloneDir = getCloneDir(module);
@@ -56,7 +55,7 @@ public class GitSyncService {
     }
 
     /**
-     * Resolves HEAD commit hash.
+     * 解析 HEAD 指向的 commit hash 值。
      */
     public String resolveHead(Path repoRoot) {
         try (Repository repo = openRepository(repoRoot)) {
@@ -69,7 +68,7 @@ public class GitSyncService {
     }
 
     /**
-     * Detects changed files between two commits.
+     * 检测两个 commit 之间的变更文件（新增、修改、删除）。
      */
     public DeltaResult detectChanges(Path repoRoot, String fromCommit, String toCommit) {
         try (Repository repo = openRepository(repoRoot);
@@ -115,7 +114,7 @@ public class GitSyncService {
     }
 
     /**
-     * Gets the diff content for a specific file between two commits.
+     * 获取两个 commit 之间的完整 diff 内容。
      */
     public String getFileDiff(Path repoRoot, String fromCommit, String toCommit) {
         try (Repository repo = openRepository(repoRoot);

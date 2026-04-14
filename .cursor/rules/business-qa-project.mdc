@@ -1,10 +1,7 @@
 ---
 description: Business QA 项目规范与架构指南
-globs:
-  - "**/*.java"
-  - "**/*.vue"
-  - "**/*.ts"
-alwaysApply: true
+globs: "**/business-qa/**"
+alwaysApply: false
 ---
 
 # Business QA 项目规则
@@ -45,6 +42,13 @@ alwaysApply: true
 - 代码和注释中禁止出现公司内部信息（本项目开源）
 - GroupId: `com.zhuangjie`，禁止使用 `com.al.risk`
 - JSON 序列化统一使用 Jackson（Spring Boot 自带），不要用 Hutool JSONUtil 序列化 record（5.8.x 不支持）
+
+## 注释语言规范
+- **所有代码注释必须使用中文**，包括：类级别 Javadoc、方法级别 Javadoc、行内注释、TODO / FIXME
+- **日志消息**保持英文（便于日志搜索和国际化）
+- 只对**非显而易见的逻辑**加注释，不对简单 CRUD、getter/setter 等加注释
+- 核心 AI 业务逻辑（RAG、Embedding、向量检索、混合检索、Advisor 链、护栏、重试、摘要压缩等）必须有中文注释说明意图
+- 测试相关的代码（Controller 接口、Service 方法）在类或方法上标注 `【测试用】` 前缀
 
 ## AI 调用规范
 - 所有 LLM 调用通过 Spring AI `ChatClient`（流式用 stream，同步用 call）

@@ -21,6 +21,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+/**
+ * AI 对话核心配置：构建 ChatClient、ChatMemory、RAG Advisor 等核心组件。
+ * 启动时从数据库加载系统提示词，加载失败则使用硬编码默认值。
+ */
 @Slf4j
 @Configuration
 public class AiChatConfig {
@@ -44,31 +48,7 @@ public class AiChatConfig {
 
     // ─── ChatMemory（带摘要压缩） ───
 
-    /**
-     * RAG（检索增强生成）核心组件配置。
-     * 
-     * 工作流程：
-     * 1. 用户提问 → 2. 检索相关文档 → 3. 将文档注入问题上下文 → 4. AI 基于上下文回答
-     * 
-     * 参数说明：
-     * - similarityThreshold(0.5): 相似度阈值，只返回相似度 >= 0.5 的文档片段
-     *   ├─ 范围：0.0 ~ 1.0
-     *   ├─ 值越高：匹配越严格，返回的文档越相关但可能遗漏
-     *   └─ 值越低：匹配越宽松，返回更多文档但可能包含噪声
-     * 
-     * - topK(5): 返回最相关的前 5 个文档片段
-     *   ├─ 避免返回太多内容导致上下文过长
-     *   └─ 同时提供足够的知识片段供 AI 参考
-     * 
-     * - allowEmptyContext(true): 容错机制
-     *   ├─ 当没有检索到相关文档时，仍允许 AI 使用自身知识回答
-     *   └─ 防止因知识库缺失导致完全无法回答
-     * 
-     * ObjectProvider 的作用：
-     * - 延迟获取 VectorStore Bean，避免启动时因 Bean 不存在而报错
-     * - 实现可选依赖：有 VectorStore 就用 RAG，没有就直接回答
-     * - 支持运行时动态切换 VectorStore 实现
-     */
+    /** 创建带摘要压缩的对话记忆：超过阈值时自动用 LLM 压缩旧消息为摘要 */
     @Bean
     public ChatMemory chatMemory(ChatModel chatModel,
                                  @Value("${qa.rag.memory-max-messages:16}") int maxMessages,
@@ -79,6 +59,10 @@ public class AiChatConfig {
 
     // ─── RAG Advisor（混合检索 + 查询改写） ───
 
+    /**
+     * 构建 RAG 检索增强 Advisor：查询改写 → 混合检索（向量+BM25+RRF）→ 上下文注入。
+     * 作为 ChatClient Advisor 链的一环，在每次对话时自动检索相关文档并注入 LLM 上下文。
+     */
     @Bean
     public RetrievalAugmentationAdvisor ragAdvisor(
             ObjectProvider<VectorStore> vectorStoreProvider,
@@ -117,6 +101,7 @@ public class AiChatConfig {
 
     // ─── ChatClient ───
 
+    /** 构建主对话 ChatClient：挂载重试、RAG、对话记忆三个 Advisor，从 DB 加载系统提示词 */
     @Bean
     public ChatClient chatClient(ChatModel chatModel, ChatMemory chatMemory,
                                  RetrievalAugmentationAdvisor ragAdvisor,
@@ -133,6 +118,7 @@ public class AiChatConfig {
                 .build();
     }
 
+    /** 构建代码分析专用 ChatClient：仅挂载重试 Advisor，不需要 RAG 和对话记忆 */
     @Bean
     public ChatClient analysisChatClient(ChatModel chatModel,
                                          LlmRetryAdvisor llmRetryAdvisor,
@@ -144,6 +130,7 @@ public class AiChatConfig {
                 .build();
     }
 
+    /** 从数据库加载提示词模板，加载失败或不存在时使用默认值 */
     private String loadPrompt(ObjectProvider<PromptTemplateDbService> provider, String key, String defaultPrompt) {
         try {
             PromptTemplateDbService service = provider.getIfAvailable();

@@ -1,7 +1,7 @@
 ---
 description: Cursor 终端中文编码修复方案
-globs: []
-alwaysApply: true
+globs: "**/business-qa/**"
+alwaysApply: false
 ---
 
 # Terminal 中文编码修复

@@ -24,12 +24,14 @@ public class VectorService {
     private final ChunkSplitter chunkSplitter;
 
     /**
-     * Splits a document into chunks and stores them in the vector store.
+     * 将文档拆分为分块，通过 Embedding 模型转为向量后存入 PgVectorStore。
      */
     public int vectorizeDocument(QaDocument doc, QaModule module) {
+        // 先删除旧的向量数据，避免重复
         deleteByDocumentId(doc.getId());
 
         List<String> chunks = chunkSplitter.split(doc.getContent());
+        // 递归分块：按段落/长度等策略将长文本拆成适合 Embedding 的片段
         List<Document> documents = new ArrayList<>();
 
         for (int i = 0; i < chunks.size(); i++) {
@@ -45,6 +47,7 @@ public class VectorService {
         }
 
         if (!documents.isEmpty()) {
+            // 分批写入，降低单次 add 的内存与数据库压力
             int batchSize = 10;
             for (int i = 0; i < documents.size(); i += batchSize) {
                 List<Document> batch = documents.subList(i, Math.min(i + batchSize, documents.size()));
@@ -57,7 +60,7 @@ public class VectorService {
     }
 
     /**
-     * Searches the vector store with module filtering.
+     * 向量相似度搜索：按模块过滤后，返回与查询语义最接近的 topK 个文档分块。
      */
     public List<Document> search(String query, List<Long> moduleIds, int topK) {
         var builder = SearchRequest.builder()

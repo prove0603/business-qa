@@ -25,6 +25,10 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 对话服务核心类：编排完整的 AI 对话流程。
+ * 调用链路：限流 → 输入护栏 → 引用预检索 → ChatClient(Retry + RAG + Memory) → 熔断 → 输出护栏
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -147,6 +151,7 @@ public class ChatService {
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 
+    /** 构建有效的模块 ID 列表：将 COMMON 类型模块自动合并到用户选择的模块中 */
     private List<Long> buildEffectiveModuleIds(List<Long> userSelectedIds) {
         List<QaModule> commonModules = moduleDbService.listByType("COMMON");
         List<Long> commonIds = commonModules.stream().map(QaModule::getId).toList();

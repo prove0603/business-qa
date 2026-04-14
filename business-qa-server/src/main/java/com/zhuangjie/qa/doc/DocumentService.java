@@ -17,6 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 文档管理服务：支持在线编辑创建和文件上传创建两种方式。
+ * 文档创建/更新后自动触发异步向量化。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
