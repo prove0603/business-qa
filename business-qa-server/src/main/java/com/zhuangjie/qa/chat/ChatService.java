@@ -1,5 +1,6 @@
 package com.zhuangjie.qa.chat;
 
+import com.zhuangjie.qa.config.ModelConfigService;
 import com.zhuangjie.qa.db.entity.QaModule;
 import com.zhuangjie.qa.db.service.ModuleDbService;
 import com.zhuangjie.qa.guardrail.GuardrailService;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -35,6 +37,7 @@ import java.util.List;
 public class ChatService {
 
     private final ChatClient chatClient;
+    private final ModelConfigService modelConfigService;
     private final ModuleDbService moduleDbService;
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProviders;
     private final GuardrailService guardrailService;
@@ -72,7 +75,7 @@ public class ChatService {
         // ====== 引用溯源：预检索文档，稍后随响应一起返回 ======
         List<SourceReference> sourceRefs = prefetchSourceRefs(question, effectiveModuleIds);
 
-        var spec = chatClient.prompt()
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
                 .user(question)
                 .advisors(a -> {
                     a.param(ChatMemory.CONVERSATION_ID, conversationId);
@@ -83,8 +86,14 @@ public class ChatService {
                     }
                 });
 
+        ChatOptions dynamicOptions = modelConfigService.getActiveChatOptions();
+        if (dynamicOptions != null) {
+            spec = spec.options(dynamicOptions);
+        }
+
+        ChatClient.ChatClientRequestSpec finalSpec = spec;
         try {
-            toolCallbackProviders.forEach(provider -> spec.toolCallbacks(provider.getToolCallbacks()));
+            toolCallbackProviders.forEach(provider -> finalSpec.toolCallbacks(provider.getToolCallbacks()));
         } catch (Exception e) {
             log.warn("MCP Tools 挂载失败（Server 可能未启动），本次对话将不使用工具: {}", e.getMessage());
         }
@@ -95,7 +104,7 @@ public class ChatService {
                 : Flux.just("[REFS:" + toRefsJson(sourceRefs) + "]");
 
         // ====== 第3层：流式调用 + 熔断 ======
-        Flux<String> contentStream = spec.stream()
+        Flux<String> contentStream = finalSpec.stream()
                 .content()
                 .map(guardrailService::filterOutput)
                 .transformDeferred(CircuitBreakerOperator.of(aiCircuitBreaker))

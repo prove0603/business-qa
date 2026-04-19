@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/changes', component: () => import('../views/Changes.vue') },
     { path: '/prompts', component: () => import('../views/Prompts.vue') },
     { path: '/guardrails', component: () => import('../views/Guardrails.vue') },
+    { path: '/ai-models', component: () => import('../views/AiModels.vue') },
   ]
 })
 

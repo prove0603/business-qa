@@ -44,18 +44,34 @@
           <el-icon><Lock /></el-icon>
           <span>护栏规则</span>
         </el-menu-item>
+        <el-menu-item index="/ai-models">
+          <el-icon><Cpu /></el-icon>
+          <span>模型</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
-    <el-main class="app-main">
-      <router-view />
-    </el-main>
+    <el-container direction="vertical" class="app-right">
+      <div class="announcement-bar">
+        <div class="announcement-track">
+          <span class="announcement-text">
+            📢 该项目在试运行阶段，如有想法或者建议，请联系：慕槐（庄杰）
+          </span>
+          <span class="announcement-text">
+            📢 该项目在试运行阶段，如有想法或者建议，请联系：慕槐（庄杰）
+          </span>
+        </div>
+      </div>
+      <el-main class="app-main">
+        <router-view />
+      </el-main>
+    </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Setting, Lock } from '@element-plus/icons-vue'
+import { Setting, Lock, Cpu } from '@element-plus/icons-vue'
 import { dashboardApi } from './api'
 
 const route = useRoute()
@@ -91,6 +107,39 @@ onMounted(async () => {
     font-weight: 600;
     border-bottom: 1px solid #333;
   }
+}
+
+.app-right {
+  flex: 1;
+  overflow: hidden;
+}
+
+.announcement-bar {
+  background: linear-gradient(90deg, #e6f7ff, #fff7e6);
+  overflow: hidden;
+  white-space: nowrap;
+  height: 32px;
+  line-height: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.announcement-track {
+  display: inline-block;
+  animation: marquee 28s linear infinite;
+}
+
+.announcement-text {
+  display: inline-block;
+  padding: 0 60px;
+  font-size: 13px;
+  color: #e6a23c;
+  font-weight: 500;
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 .app-main {

@@ -70,6 +70,13 @@ export const guardrailApi = {
   test: (input: string) => api.post('/guardrail/test', input, { headers: { 'Content-Type': 'text/plain' } }),
 }
 
+export const modelApi = {
+  getConfig: () => api.get('/model/config'),
+  test: (modelName: string) => api.post('/model/test', null, { params: { modelName }, timeout: 60000 }),
+  switchModel: (modelName: string) => api.post('/model/switch', null, { params: { modelName } }),
+  reset: () => api.post('/model/reset'),
+}
+
 export const changeApi = {
   detect: (moduleId: number) => api.post(`/change/detect/${moduleId}`, null, { timeout: 300000 }),
   listDetections: (moduleId?: number) =>

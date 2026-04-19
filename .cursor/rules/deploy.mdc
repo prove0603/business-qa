@@ -1,0 +1,55 @@
+---
+description: Business QA 部署与前端更新流程
+globs: "**/business-qa/**"
+alwaysApply: false
+---
+
+# 部署流程
+
+## 一键部署（推荐）
+
+在 business-qa 根目录执行：
+
+```powershell
+.\deploy.ps1
+```
+
+可选参数：
+- `.\deploy.ps1 -SkipBuild`   — 跳过前端构建，仅重启后端
+- `.\deploy.ps1 -SkipRestart` — 仅构建前端并同步资源，不重启后端
+
+## 手动步骤
+
+1. **构建前端**：`cd business-qa-ui && npm run build`
+   - Vite 产物直接输出到 `business-qa-server/src/main/resources/static/`
+2. **同步资源到 target**：`mvn resources:resources -pl business-qa-server`
+3. **重启后端**
+
+## 在 Cursor 中点击运行后端
+
+- 可以正常启动，同事通过内网 IP 也能访问
+- 但 Cursor 运行用的是 `target/classes/static/` 下的资源
+- 如果前端有更新，必须先执行步骤 1 + 2（或 `.\deploy.ps1 -SkipRestart`），再重启后端
+- 否则同事访问到的是旧版前端
+
+## 缓存策略
+
+- `index.html`：`Cache-Control: no-cache, no-store`，浏览器每次请求最新版本
+- `/assets/**`（JS/CSS 带 hash）：`Cache-Control: max-age=365d`，长期缓存
+- 只要资源同步到位，用户刷新即可看到新版本，无需手动清缓存
+
+## 局域网访问
+
+- 后端端口：8091，绑定 0.0.0.0
+- 同事访问地址：`http://<本机内网IP>:8091`
+- 前端产物由 Spring Boot 静态资源提供，无需单独部署前端服务
+- Windows 防火墙需放行 8091 端口（首次部署需执行）：
+  ```powershell
+  New-NetFirewallRule -DisplayName "Business QA 8091" -Direction Inbound -LocalPort 8091 -Protocol TCP -Action Allow
+  ```
+
+## 前端构建产物位置
+
+- 源码：`business-qa-ui/`
+- 构建产物：`business-qa-server/src/main/resources/static/`（已被 .gitignore 忽略）
+- 运行时：`business-qa-server/target/classes/static/`（Maven resources:resources 同步）

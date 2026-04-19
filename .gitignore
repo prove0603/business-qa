@@ -33,3 +33,14 @@ business-qa-server/src/main/resources/static/
 
 # Git repos cloned by the app
 .business-qa/
+
+# Deploy / Shutdown scripts (contain local paths)
+deploy.ps1
+shutdown.ps1
+
+# Cursor IDE local rules (may contain local paths, passwords)
+.cursor/rules/env-and-tools.mdc
+
+# ClassFinal encryption
+classfinal.txt
+*-encrypted.jar

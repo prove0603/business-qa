@@ -13,6 +13,12 @@
           @click="selectSession(s.id)"
         >
           <span class="session-title">{{ s.title || '未命名' }}</span>
+          <el-icon
+            class="session-delete-btn"
+            @click.stop="confirmDeleteSession(s.id, s.title)"
+          >
+            <Delete />
+          </el-icon>
         </div>
         <el-empty v-if="!sessions.length && !sessionsLoading" description="暂无对话历史" :image-size="64" />
       </div>
@@ -71,8 +77,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Loading, Plus } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Loading, Plus } from '@element-plus/icons-vue'
 import { chatApi, moduleApi } from '../api'
 import ChatMessage, { type ChatMessageModel, type SourceRef } from '../components/ChatMessage.vue'
 
@@ -177,6 +183,29 @@ async function selectSession(id: number) {
   if (id === currentSessionId.value) return
   currentSessionId.value = id
   await loadMessages(id)
+}
+
+async function confirmDeleteSession(id: number, title?: string) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除对话「${title || '未命名'}」吗？对话中的所有消息将一并删除且无法恢复。`,
+      '删除对话',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await chatApi.deleteSession(id)
+    ElMessage.success('对话已删除')
+    if (currentSessionId.value === id) {
+      currentSessionId.value = null
+      messages.value = []
+    }
+    await loadSessions()
+  } catch {
+    ElMessage.error('删除失败')
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -367,6 +396,8 @@ onMounted(async () => {
 }
 
 .session-item {
+  display: flex;
+  align-items: center;
   padding: 10px 12px;
   margin-bottom: 6px;
   border-radius: 8px;
@@ -375,6 +406,24 @@ onMounted(async () => {
   color: var(--el-text-color-regular);
   border: 1px solid transparent;
   transition: background 0.15s, border-color 0.15s;
+}
+
+.session-delete-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--el-text-color-placeholder);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.session-item:hover .session-delete-btn {
+  opacity: 1;
+}
+
+.session-delete-btn:hover {
+  color: var(--el-color-danger);
 }
 
 .session-item:hover {
@@ -389,6 +438,8 @@ onMounted(async () => {
 }
 
 .session-title {
+  flex: 1;
+  min-width: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
